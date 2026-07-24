@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notes — Viranium Labs</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <a href="index.html#research">Research</a>
+  <a href="mailto:viranium.labs@gmail.com">Contact</a>
+</nav>
+
+<header class="wordmark">
+  <a class="back" href="index.html">Viranium Labs</a>
+  <h1 class="sub">Notes</h1>
+</header>
+
+<main>
+
+  <p>Working notes from the lab. Each entry corresponds to one rung of the ladder we are climbing, and each rung is a single question that can be answered no.</p>
+
+  <div class="entry">
+    <div class="meta">Rung 0 &middot; Coming soon</div>
+    <h3>Encoding capacity of a spiking network under electrode constraints</h3>
+    <p>Before touching living tissue, we are building the experiment in simulation. A recurrent spiking network stands in for a culture, tuned into the synchronized bursting regime that real cultured neurons show. We encode a continuous value as a spatial pattern of stimulation across a limited number of virtual electrodes, let the network evolve on its own for a hundred milliseconds, then try to recover that value from the resulting spikes. The question is how many distinguishable values survive, how quickly spontaneous bursting erases them, and whether stimulating in the quiet windows between bursts protects the signal. The output is a single curve: recoverable states against electrode count. That curve determines whether the rungs above it are reachable, and what hardware they would require.</p>
+  </div>
+
+</main>
+
+<footer>
+  <div class="rule"></div>
+
+  <div class="cols">
+
+    <div>
+      <h4>Research</h4>
+      <ul>
+        <li><a href="notes.html">Notes</a></li>
+      </ul>
+    </div>
+
+    <div>
+      <h4>Company</h4>
+      <ul>
+        <li><a href="mailto:viranium.labs@gmail.com">Contact</a></li>
+      </ul>
+    </div>
+
+    <div>
+      <h4>Legal</h4>
+      <ul>
+        <li><a href="terms.html">Terms of service</a></li>
+        <li><a href="privacy.html">Privacy notice</a></li>
+      </ul>
+    </div>
+
+  </div>
+
+  <div class="copyright">Viranium Labs &copy; 2026</div>
+</footer>
+
+</body>
+</html>
