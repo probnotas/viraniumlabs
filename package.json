@@ -1,0 +1,14 @@
+{
+  "name": "viranium-labs-site",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Viranium Labs site with Stripe Payments + Invoicing",
+  "scripts": {
+    "dev": "vercel dev",
+    "send-invoice": "node scripts/send-invoice.js"
+  },
+  "dependencies": {
+    "stripe": "^22.3.0"
+  }
+}

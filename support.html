@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support — Viranium Labs</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .tiers { display: flex; flex-direction: column; gap: 14px; margin: 36px 0; }
+  .tier {
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    text-align: left;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 18px 22px;
+    background: none;
+    border: 1px solid rgba(26,26,26,0.18);
+    color: #1A1A1A;
+    cursor: pointer;
+    transition: border-color 0.3s ease, background 0.3s ease;
+  }
+  .tier:hover { border-color: #1A1A1A; background: rgba(26,26,26,0.03); }
+  .tier .amt { color: #8C8C8C; font-size: 14px; }
+  .tier:disabled { opacity: 0.5; cursor: wait; }
+  .support-note { font-family: 'Inter', sans-serif; font-size: 13px; color: #8C8C8C; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="home" href="index.html">Home</a>
+  <a href="index.html#research">Research</a>
+  <a href="support.html">Support</a>
+  <a href="mailto:viranium.labs@gmail.com">Contact</a>
+</nav>
+
+<header class="wordmark">
+  <a class="back" href="index.html">Viranium Labs</a>
+  <h1 class="sub">Support the lab</h1>
+</header>
+
+<main>
+
+  <p>Viranium Labs is a small lab working on a long problem. Contributions fund
+  culture reagents, electrode arrays, and the unglamorous hours of measurement
+  between them. Findings, methods, and code stay open either way.</p>
+
+  <div class="tiers">
+    <button class="tier" data-tier="supporter">Supporter <span class="amt">$1</span></button>
+    <button class="tier" data-tier="patron">Patron <span class="amt">$5</span></button>
+    <button class="tier" data-tier="benefactor">Benefactor <span class="amt">$10</span></button>
+  </div>
+
+  <p class="support-note">Payment is handled by Stripe on a secure checkout page.
+  For sponsored research or partnership agreements, <a class="inline" href="mailto:viranium.labs@gmail.com">write to us</a>
+  and we will send an invoice.</p>
+
+</main>
+
+<footer>
+  <div class="rule"></div>
+
+  <div class="cols">
+
+    <div>
+      <h4>Research</h4>
+      <ul>
+        <li><a href="notes.html">Notes</a></li>
+      </ul>
+    </div>
+
+    <div>
+      <h4>Company</h4>
+      <ul>
+        <li><a href="support.html">Support</a></li>
+        <li><a href="mailto:viranium.labs@gmail.com">Contact</a></li>
+      </ul>
+    </div>
+
+    <div>
+      <h4>Legal</h4>
+      <ul>
+        <li><a href="terms.html">Terms of service</a></li>
+        <li><a href="privacy.html">Privacy notice</a></li>
+      </ul>
+    </div>
+
+  </div>
+
+  <div class="copyright">Viranium Labs &copy; 2026</div>
+</footer>
+
+<script>
+  document.querySelectorAll('.tier').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/create-checkout-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tier: btn.dataset.tier }),
+        });
+        const data = await res.json();
+        if (data.url) {
+          window.location.assign(data.url);
+        } else {
+          throw new Error(data.error || 'No checkout URL returned');
+        }
+      } catch (err) {
+        btn.disabled = false;
+        alert('Sorry, checkout could not be started. Please try again.');
+      }
+    });
+  });
+</script>
+
+</body>
+</html>
