@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Support — Viranium Labs</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=8">
+<script src="script.js?v=8" defer></script>
 <style>
   .tiers { display: flex; flex-direction: column; gap: 14px; margin: 36px 0; }
   .tier {
@@ -16,22 +17,22 @@
     align-items: baseline;
     padding: 18px 22px;
     background: none;
-    border: 1px solid rgba(26,26,26,0.18);
-    color: #1A1A1A;
+    border: 1px solid rgba(255,255,255,0.22);
+    color: #E8E9E4;
     cursor: pointer;
     transition: border-color 0.3s ease, background 0.3s ease;
   }
-  .tier:hover { border-color: #1A1A1A; background: rgba(26,26,26,0.03); }
-  .tier .amt { color: #8C8C8C; font-size: 14px; }
+  .tier:hover { border-color: #EDEEEA; background: rgba(255,255,255,0.05); }
+  .tier .amt { color: #9C9E98; font-size: 14px; }
   .tier:disabled { opacity: 0.5; cursor: wait; }
-  .support-note { font-family: 'Inter', sans-serif; font-size: 13px; color: #8C8C8C; }
+  .support-note { font-family: 'Inter', sans-serif; font-size: 13px; color: #9C9E98; }
 </style>
 </head>
 <body>
 
 <nav class="nav">
   <a class="home" href="index.html">Home</a>
-  <a href="index.html#research">Research</a>
+  <a href="notes.html">Research</a>
   <a href="support.html">Support</a>
   <a href="mailto:viranium.labs@gmail.com">Contact</a>
 </nav>
@@ -60,36 +61,23 @@
 </main>
 
 <footer>
-  <div class="rule"></div>
-
-  <div class="cols">
-
-    <div>
-      <h4>Research</h4>
-      <ul>
-        <li><a href="notes.html">Notes</a></li>
-      </ul>
+  <section class="band">
+    <canvas class="band-canvas" aria-hidden="true"></canvas>
+    <div class="band-inner">
+      <a class="band-logo" href="index.html"><img src="assets/wordmark.png" alt="Viranium Labs"></a>
     </div>
+  </section>
 
-    <div>
-      <h4>Company</h4>
-      <ul>
-        <li><a href="support.html">Support</a></li>
-        <li><a href="mailto:viranium.labs@gmail.com">Contact</a></li>
-      </ul>
+  <div class="band-foot">
+    <div class="band-links">
+      <a href="notes.html">Notes</a>
+      <a href="support.html">Support</a>
+      <a href="mailto:viranium.labs@gmail.com">Contact</a>
+      <a href="terms.html">Terms of service</a>
+      <a href="privacy.html">Privacy notice</a>
     </div>
-
-    <div>
-      <h4>Legal</h4>
-      <ul>
-        <li><a href="terms.html">Terms of service</a></li>
-        <li><a href="privacy.html">Privacy notice</a></li>
-      </ul>
-    </div>
-
+    <div class="copyright">Viranium Labs &copy; 2026</div>
   </div>
-
-  <div class="copyright">Viranium Labs &copy; 2026</div>
 </footer>
 
 <script>

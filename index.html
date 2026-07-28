@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Viranium Labs</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=8">
+<script src="script.js?v=8" defer></script>
 </head>
 <body>
 
@@ -14,9 +15,18 @@
   <a href="mailto:viranium.labs@gmail.com">Contact</a>
 </nav>
 
-<header class="wordmark">
-  <h1>Viranium Labs</h1>
-</header>
+<section class="hero">
+  <video class="bgvid" src="assets/hero.mp4" autoplay muted loop playsinline aria-hidden="true"></video>
+
+  <div class="giant">
+    <img src="assets/wordmark.png" alt="Viranium">
+  </div>
+
+  <div class="hero-copy">
+    <p>We study whether living neural tissue can serve as the predictive core of a machine's world model.</p>
+    <p>Prediction is what the tissue does, unbidden, because of how it is wired.</p>
+  </div>
+</section>
 
 <main>
 
@@ -32,13 +42,33 @@
 
   <p><em>Learning without gradients.</em> Every deployed model today is frozen at whatever it learned before shipping. Cultured neurons reorganize continuously to make their input less surprising, with no separate training phase and no loss function anyone wrote down. We do not yet know how to specify that mechanism. That is precisely why it is worth studying.</p>
 
+  <figure class="fig fig-right">
+    <img src="assets/fig-time.svg" alt="A smooth continuous trajectory beside a stepped approximation that drifts further from it with each step.">
+    <figcaption>Discrete steps drift from the trajectory they approximate. Tissue lives in continuous time.</figcaption>
+  </figure>
+
   <p><em>Time comes for free.</em> A silicon model chops time into discrete steps and compounds error across them. Tissue lives in continuous time. The substrate has duration built in, because it is made of matter rather than arithmetic.</p>
 
   <h2>Start with the smallest honest question</h2>
 
+  <figure class="fig fig-left">
+    <img src="assets/fig-capacity.svg" alt="A saturating curve of recoverable states against electrode count, with a widening uncertainty band.">
+    <figcaption>The first curve we owe the field: how many distinguishable states survive, against electrode count.</figcaption>
+  </figure>
+
   <p><em>One falsifiable question at a time.</em> Every demonstration in biological computing to date is categorical: up or down, hit or miss. A physical state is continuous. Before anything else can be built, someone has to measure whether a living network can hold the difference between forty-seven degrees and fifty-one. Nobody has. We are starting there.</p>
 
+  <figure class="fig fig-right">
+    <img src="assets/fig-raster.svg" alt="A spike raster of twenty-six units, with three dense vertical bands where the whole network fires at once.">
+    <figcaption>Spontaneous synchronized bursts, the thing most likely to erase whatever we write in.</figcaption>
+  </figure>
+
   <p><em>A failure is a measurement.</em> Cultured networks fire in synchronized bursts that can erase whatever pattern was written into them. If that ceiling turns out to be low, the number is still the number the field needs. We would rather publish a hard limit than a promise.</p>
+
+  <figure class="fig fig-left">
+    <img src="assets/fig-electrodes.svg" alt="An eight by eight grid of electrodes with six sites active, forming one spatial stimulation pattern.">
+    <figcaption>A continuous value written as a spatial pattern across a limited number of electrodes.</figcaption>
+  </figure>
 
   <p><em>Simulation before tissue.</em> The first experiments run on spiking network models, where iteration is free and every parameter is ours to vary. What survives contact with simulation is what earns time on real hardware.</p>
 
@@ -49,36 +79,23 @@
 </main>
 
 <footer>
-  <div class="rule"></div>
-
-  <div class="cols">
-
-    <div>
-      <h4>Research</h4>
-      <ul>
-        <li><a href="notes.html">Notes</a></li>
-      </ul>
+  <section class="band">
+    <canvas class="band-canvas" aria-hidden="true"></canvas>
+    <div class="band-inner">
+      <a class="band-logo" href="index.html"><img src="assets/wordmark.png" alt="Viranium Labs"></a>
     </div>
+  </section>
 
-    <div>
-      <h4>Company</h4>
-      <ul>
-        <li><a href="support.html">Support</a></li>
-        <li><a href="mailto:viranium.labs@gmail.com">Contact</a></li>
-      </ul>
+  <div class="band-foot">
+    <div class="band-links">
+      <a href="notes.html">Notes</a>
+      <a href="support.html">Support</a>
+      <a href="mailto:viranium.labs@gmail.com">Contact</a>
+      <a href="terms.html">Terms of service</a>
+      <a href="privacy.html">Privacy notice</a>
     </div>
-
-    <div>
-      <h4>Legal</h4>
-      <ul>
-        <li><a href="terms.html">Terms of service</a></li>
-        <li><a href="privacy.html">Privacy notice</a></li>
-      </ul>
-    </div>
-
+    <div class="copyright">Viranium Labs &copy; 2026</div>
   </div>
-
-  <div class="copyright">Viranium Labs &copy; 2026</div>
 </footer>
 
 </body>
