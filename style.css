@@ -74,7 +74,7 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: saturate(0.75) contrast(1.05) brightness(0.85);
+  filter: saturate(0.75) contrast(1.05) brightness(0.62);
   animation: slowzoom 32s ease-in-out infinite alternate;
 }
 
@@ -288,9 +288,9 @@ footer { margin-top: 170px; }
 
 .band {
   position: relative;
-  height: 320px;
+  height: clamp(320px, 26vw, 400px);
   overflow: hidden;
-  background: #000;
+  background: #0B0C0B;
   cursor: crosshair;
 }
 
@@ -307,12 +307,18 @@ footer { margin-top: 170px; }
   z-index: 2;
   height: 100%;
   display: flex;
-  align-items: center;
-  gap: 24px;
-  padding: 0 44px;
+  flex-direction: column;
+  padding: 26px 44px 32px;
   pointer-events: none;
   mix-blend-mode: difference;
 }
+
+/* spacers hold the wordmark row at roughly 38% of the band height,
+   keeping it clear of the halftone crest below */
+.band-inner::before { content: ''; order: 1; flex: 0.7; }
+.band-inner::after  { content: ''; order: 3; flex: 1.8; }
+.band-links { order: 0; }
+.band-foot  { order: 2; }
 
 .band-logo {
   pointer-events: auto;
@@ -320,35 +326,48 @@ footer { margin-top: 170px; }
 }
 
 .band-logo img {
-  width: 168px;
+  width: clamp(120px, 13vw, 178px);
   height: auto;
   display: block;
   filter: brightness(0) invert(1);
 }
 
 .band-foot {
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 26px 52px 60px;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
+}
+
+.band-end { text-align: right; }
+
+.band-tag {
+  font-family: 'Inter', sans-serif;
+  font-size: clamp(13px, 1.05vw, 15px);
+  font-weight: 500;
+  color: #F1F2ED;
+  margin-bottom: 8px;
+}
+
+.band-links {
+  display: flex;
+  justify-content: flex-end;
+  gap: 26px;
   flex-wrap: wrap;
 }
 
-.band-links { display: flex; gap: 26px; flex-wrap: wrap; }
+.band-links a { pointer-events: auto; }
 
 .band-links a {
   font-family: 'Inter', sans-serif;
-  font-size: 13px;
-  color: #A9ABA5;
+  font-size: 14px;
+  color: #E6E7E2;
   text-decoration: none;
   position: relative;
   padding-bottom: 2px;
   transition: color 0.3s ease;
 }
-.band-links a:hover { color: #F1F2ED; }
+.band-links a:hover { color: #FFFFFF; }
 
 .band-links a::after {
   content: '';
@@ -378,17 +397,19 @@ footer { margin-top: 170px; }
   main { padding-top: 64px; }
   h2 { font-size: 25px; margin-top: 56px; }
   footer { margin-top: 110px; }
-  .band { height: 240px; }
-  .band-inner { padding: 0 22px; }
+  .band { height: 280px; }
+  .band-inner { padding: 20px 22px 24px; }
   .band-logo img { width: 112px; }
-  .band-foot { padding: 22px 24px 44px; }
+  .band-links { gap: 16px; }
+  .band-links a { font-size: 13px; }
 }
 
 @media (max-width: 520px) {
   .nav { grid-template-columns: auto 1fr; }
   .nav .menu { justify-self: end; }
   .nav .cta { display: none; }
-  .band-foot { flex-direction: column; align-items: center; text-align: center; gap: 18px; }
-  .band-links { justify-content: center; gap: 18px; }
-  .band { height: 200px; }
+  .band-foot { flex-direction: column; align-items: flex-start; gap: 16px; }
+  .band-end { text-align: left; }
+  .band-links { justify-content: flex-start; gap: 14px; }
+  .band { height: 320px; }
 }

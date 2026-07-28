@@ -46,10 +46,11 @@
     band.addEventListener('mouseleave', function () { mTarget = 0; });
 
     function crest(x, t) {
-      return H * 0.56
-        + Math.sin(x * 0.0060 + t * 0.42) * H * 0.155
-        + Math.sin(x * 0.0131 - t * 0.31) * H * 0.065
-        + Math.sin(x * 0.0027 + t * 0.67) * H * 0.055;
+      return H * 0.80
+        + Math.sin(x * 0.0060 + t * 0.42) * H * 0.075
+        + Math.sin(x * 0.0131 - t * 0.31) * H * 0.035
+        + Math.sin(x * 0.0027 + t * 0.67) * H * 0.028
+        - (x / W) * H * 0.060;         // sweeps upward toward the right
     }
 
     function render(t) {
@@ -58,12 +59,12 @@
       ctx.fillStyle = '#D2D4CD';
       ctx.beginPath();
       var maxR = GAP * 0.52;
-      var fade = 30;                       // halftone transition depth
+      var fade = 46;                       // halftone transition depth
       for (var x = GAP * 0.5; x < W; x += GAP) {
         var cy = crest(x, t);
         if (mAmt > 0.01) {                 // cursor lifts the wave toward it
           var dx = x - mx;
-          cy -= Math.exp(-(dx * dx) / 16200) * 52 * mAmt;
+          cy -= Math.exp(-(dx * dx) / 16200) * 26 * mAmt;
         }
         for (var y = GAP * 0.5; y < H; y += GAP) {
           var f = (y - cy) / fade;
@@ -106,7 +107,7 @@
   }
 
   /* reveal-on-scroll for content */
-  var targets = document.querySelectorAll('main > *, footer .cols > div, footer .copyright');
+  var targets = document.querySelectorAll('main > *');
   targets.forEach(function (el) { el.classList.add('reveal'); });
 
   if (reduced || !('IntersectionObserver' in window)) {
@@ -141,6 +142,8 @@
       if (animating) requestAnimationFrame(step);
     }
     window.addEventListener('wheel', function (e) {
+      if (e.ctrlKey) return;                                // leave pinch-zoom alone
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;  // and horizontal gestures
       e.preventDefault();
       target = Math.max(0, Math.min(maxScroll(), target + e.deltaY));
       if (!animating) {
@@ -158,6 +161,13 @@
   /* hero parallax: copy drifts up and fades, wordmark lags behind the scroll */
   var copy = document.querySelector('.hero-copy');
   var giant = document.querySelector('.giant');
+
+  /* a finished CSS animation keeps overriding inline styles, so clear it once
+     the entrance is done — otherwise the parallax below never takes effect */
+  [copy, giant].forEach(function (el) {
+    if (el) el.addEventListener('animationend', function () { el.style.animation = 'none'; });
+  });
+
   if (!reduced && (copy || giant)) {
     var ticking = false;
     function parallax() {
