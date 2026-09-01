@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A Wrong Model Is Worse Than None &mdash; Viranium Labs</title>
+<link rel="stylesheet" href="style.css?v=16">
+<script src="script.js?v=16" defer></script>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="home" href="index.html">Home</a>
+  <a href="notes.html">Research</a>
+  <a href="mailto:viranium.labs@gmail.com">Contact</a>
+</nav>
+
+<article class="paper">
+
+<a class="back" href="notes.html">&larr; Research</a>
+
+<header class="mast">
+  <p class="eyebrow">Technical Report · Self Model Research · Rung 2</p>
+  <h1>A Wrong Model Is Worse Than None</h1>
+  <p class="subtitle">Damage detection and recovery in a learned self-model, and why model-based control is the more brittle option</p>
+  <div class="byline">
+    <span>Pendulum-v1</span><span>Damage recovery</span><span>August 2026</span><span>Author list to be finalised</span>
+  </div>
+</header>
+
+<div class="abstract">
+  <h2>Abstract</h2>
+  <p>We test whether a learned forward model can detect a change in its own body and re-adapt from few samples. A pendulum's mass is increased 50% mid-experiment, cutting actuator authority to 0.667× while leaving free-swing dynamics untouched. The model detects the change immediately: one-step prediction error rises 9.1× under random probing. Control degrades sharply, from 3.667 to 8.748 cost (+139%), and fine-tuning on new post-damage transitions recovers 43% of the loss from 10 samples and 82% from 500.</p>
+  <p>The intended headline — that this is dramatically more sample-efficient than model-free retraining — did not survive its own control experiment. Against SAC retrained from scratch the advantage looks enormous (10 samples versus ~10,000 steps), but that compares adaptation to learning the task from nothing. Against SAC <em>pre-trained on the healthy body</em>, the correct control, model-free needed no adaptation at all: its untouched policy scored 3.000 on the damaged body, better than our system reaches after any amount of fine-tuning.</p>
+  <p>The robust finding is the asymmetry that made this possible. Model-based control degraded 139% where the model-free policy degraded 26%, roughly 5× more brittle, because a planner executes physics it believes while a reactive policy responds to what it senses. We argue the defensible value of a self-model here is not planning but <em>fault detection</em>: a signal reflex controllers structurally cannot produce. We also report two further negative results — prediction accuracy and control quality are anti-correlated during early adaptation, and recovery below 500 samples is high-variance enough that individual adaptations sometimes end worse than not adapting.</p>
+</div>
+
+<section>
+  <h2><span class="num">1</span>Introduction</h2>
+  <p>A robot that models its own body should, in principle, notice when that body changes and correct for it without relearning its task. This report tests that proposition on a minimal system and reports both what worked and what did not.</p>
+  <p>The setup deliberately separates three questions that are usually entangled: does the model <em>notice</em> the change, does control <em>degrade</em>, and how much new experience does <em>recovery</em> require. Each is measured independently, and a model-free baseline is measured through the identical evaluation loop.</p>
+  <p>The result we did not anticipate, and which we now regard as the paper's contribution, is that the model-based controller is substantially more fragile to body change than the model-free policy it was meant to outperform. The self-model's advantage is not robustness or recovery speed; it is that the model-based system can tell that something happened at all.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>Setup</h2>
+
+  <h3>System under test</h3>
+  <p>We use the delta-prediction forward model and CEM planner from the companion report: an MLP (4 → 64 → 64 → 3) trained on 2000 transitions of random-action interaction, predicting <code>s' − s</code>, driving a 20-step-horizon CEM planner (5 iterations, 100 candidates, 10 elites). Control cost is squared distance from the upright target <code>[1, 0, 0]</code>, averaged per step over 200-step episodes.</p>
+
+<figure class="diagram">
+<div class="chart-title">Figure 0 — Where the damage enters the dynamics</div>
+<div class="diagram-box">
+<svg viewBox="0 0 700 176" role="img" aria-label="Diagram of the pendulum update equation showing that mass appears only in the torque term, so the damage is invisible when applied torque is zero.">
+  <g font-family="IBM Plex Mono, monospace">
+    <text x="350" y="42" text-anchor="middle" font-size="19" fill="var(--ink)">θ̈  =  3g/(2l)·sin(θ)  +  3/(m·l²)·u</text>
+    <rect x="188" y="22" width="150" height="28" rx="3" fill="none" stroke="var(--ink-3)" stroke-width="1.2" stroke-dasharray="4 3"/>
+    <rect x="376" y="22" width="132" height="28" rx="3" fill="#CE7A1B" fill-opacity=".16" stroke="#CE7A1B" stroke-width="1.4"/>
+    <text x="263" y="76" text-anchor="middle" font-size="11.5" fill="var(--ink-3)">gravity — no m</text>
+    <text x="263" y="93" text-anchor="middle" font-size="11.5" fill="var(--ink-3)">unchanged by damage</text>
+    <text x="442" y="76" text-anchor="middle" font-size="11.5" fill="#CE7A1B">torque — contains m</text>
+    <text x="442" y="93" text-anchor="middle" font-size="11.5" fill="#CE7A1B">authority × 0.667</text>
+    <line x1="60" y1="118" x2="640" y2="118" stroke="var(--rule)" stroke-width="1"/>
+    <text x="60" y="141" font-size="12" fill="var(--ink)">u ≠ 0 → damage observable</text>
+    <text x="640" y="141" text-anchor="end" font-size="12" fill="var(--ink)">u = 0 → damage invisible</text>
+    <text x="350" y="164" text-anchor="middle" font-size="11" fill="var(--ink-3)">a coasting damaged pendulum is identical to a healthy one</text>
+  </g>
+</svg></div>
+<figcaption><b>Figure 0.</b> Raising mass from 1.0 to 1.5 cuts actuator authority to 0.667× and leaves the gravity term untouched. Every result in this report follows from that asymmetry: detection requires applied torque, so a controller performing well — and therefore pushing gently — is the one least able to notice it has been damaged.</figcaption>
+</figure>
+
+  <h3>The damage</h3>
+  <p>At damage time the pendulum's mass is increased from 1.0 to 1.5 by modifying the environment's attribute directly. This choice has a consequence worth stating explicitly, because it shapes every result that follows. Pendulum's dynamics update is</p>
+  <div class="repro">θ̈ = 3g/(2l)·sin(θ) + 3/(m·l²)·u</div>
+  <p style="margin-top:15px;">Mass enters <em>only</em> through the torque term. Raising <code>m</code> to 1.5 cuts actuator authority to 0.667× and leaves the gravity term untouched. The damage is therefore mathematically invisible whenever <code>u = 0</code>: a coasting damaged pendulum is indistinguishable from a healthy one, and the change is most observable under large torque.</p>
+
+  <h3>Evaluation</h3>
+  <p>All conditions are scored through a single shared evaluation function with an injectable policy and an injectable environment factory, so the model-based controller and every baseline traverse identical code with identical start-state seeds. Baselines and recovery points are averaged over 150 rollouts (10 independent draws × 15 episodes); the SAC baselines use 3 training seeds × 15 episodes.</p>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Detection</h2>
+  <p>We ran continuous 400-step episodes in which the body breaks at step 200, recording one-step prediction error throughout, under two policies: uniformly random torques (a probe) and the CEM controller itself (the operational case).</p>
+
+  <figure class="chart">
+<div class="chart-title">Figure 1 — The model notices, but only while it pushes</div>
+<div class="chart-box"><svg viewBox="0 0 700 310" role="img" aria-label="Slope chart: prediction error rises 9.1 times under random probing and 3.0 times under CEM control after the body is damaged."><line x1="62" y1="249.3" x2="682" y2="249.3" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="252.8" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">0.0001</text><line x1="62" y1="98.1" x2="682" y2="98.1" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="101.6" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">0.001</text><text x="212.0" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">before damage</text><text x="507.0" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">after damage</text><line x1="62" y1="264" x2="682" y2="264" stroke="var(--rule)" stroke-width="1"/><text x="372" y="304" text-anchor="middle" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace"></text><text transform="translate(14,145) rotate(-90)" text-anchor="middle" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">one-step MSE (log)</text><line x1="212" y1="228.2" x2="507" y2="83.3" stroke="#CE7A1B" stroke-width="2"/><circle cx="212" cy="228.2" r="4.8" fill="#CE7A1B" stroke="var(--surface)" stroke-width="2"/><circle cx="507" cy="83.3" r="4.8" fill="#CE7A1B" stroke="var(--surface)" stroke-width="2"/><text x="201" y="231.7" text-anchor="end" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">0.000138</text><text x="518" y="83.8" font-size="11" fill="var(--ink)" font-family="IBM Plex Mono, monospace">0.001253</text><text x="518" y="97.3" font-size="10.5" fill="#CE7A1B" font-family="IBM Plex Mono, monospace">random probe  9.1x</text><line x1="212" y1="224.9" x2="507" y2="152.5" stroke="#3E7BC8" stroke-width="2"/><circle cx="212" cy="224.9" r="4.8" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="507" cy="152.5" r="4.8" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><text x="201" y="228.4" text-anchor="end" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">0.000145</text><text x="518" y="153.0" font-size="11" fill="var(--ink)" font-family="IBM Plex Mono, monospace">0.000437</text><text x="518" y="166.5" font-size="10.5" fill="#3E7BC8" font-family="IBM Plex Mono, monospace">CEM control  3.0x</text></svg></div>
+<figcaption><b>Figure 1.</b> One-step prediction error either side of the damage event, mean over 10 traces of 200 steps per side. Mass enters the dynamics only through the torque term, so a controller that has stabilised the pendulum applies near-zero torque and sees a 3x weaker signal than a random probe. Competent control suppresses the evidence of its own damage.</figcaption>
+</figure>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>Policy</th><th>Pre-damage MSE</th><th>Post-damage MSE</th><th>Ratio</th></tr></thead>
+      <tbody>
+        <tr><td>Random probe</td><td>0.000138</td><td>0.001253</td><td class="hi">9.1×</td></tr>
+        <tr><td>CEM control</td><td>0.000145</td><td>0.000437</td><td>3.0×</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 1.</b> One-step prediction error across the damage event, mean over 10 traces of 200 steps each side. Detection is unambiguous under both policies, but the controller sees a 3× weaker signal than a random probe.</figcaption>
+  </figure>
+
+  <div class="callout">
+    <span class="lbl">Competent control suppresses its own evidence</span>
+    <p>Because mass is observable only through the torque term, a controller that has stabilised the pendulum upright applies near-zero torque and stops generating the data that would reveal the damage. This is a general design constraint rather than an artifact of this parameter choice: a self-monitoring system is least able to detect a fault precisely when it is performing well. Deliberate probing is not optional.</p>
+  </div>
+
+  <p>We note that no detector is implemented here. We measure that the error signal exists and is large; we do not specify a threshold, and we report no false-positive rate, detection latency distribution, or ROC curve. Section 8 treats this as the study's principal gap.</p>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Degradation</h2>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>Condition</th><th>Cost</th><th>SEM</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td>Healthy body, healthy model</td><td class="hi">3.667</td><td>0.147</td><td>—</td></tr>
+        <tr><td>Damaged body, stale model</td><td class="lo">8.748</td><td>0.446</td><td>+139%</td></tr>
+        <tr class="rule-top"><td>Damage gap</td><td>5.081</td><td>0.470</td><td></td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 2.</b> Control degradation, 150 rollouts per condition. An earlier 15-rollout measurement of the stale condition returned 10.168; the properly averaged value is 8.748. Because every "fraction recovered" figure divides by this gap, a noisy baseline propagates into every derived number.</figcaption>
+  </figure>
+
+  <p>The mechanism is specific. The stale model believes torque is 1.5× more effective than it now is, so CEM plans swing-ups that would succeed on the old body and systematically under-actuates on the new one. A modest per-step model error compounds across a 20-step planning horizon. Variance also rises sharply (std 1.84 → 5.46): the damaged system is not merely worse on average but erratic, succeeding from some start states and failing outright from others.</p>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Recovery</h2>
+  <p>After damage we collect new transitions from the damaged body and fine-tune from the pre-damage weights — never from scratch — on the new data only, since the old body's transitions are now wrong. Each increment is an independent fine-tune from the same starting weights, repeated over 10 independent draws of post-damage data.</p>
+
+  <figure class="chart">
+<div class="chart-title">Figure 3 — Recovery is fast on average and unreliable per instance</div>
+<div class="chart-box"><svg viewBox="0 0 700 310" role="img" aria-label="Line chart with range bands: mean recovery cost stays near 6 from 10 to 200 samples before dropping to 4.58 at 500, while individual draws span roughly 3.7 to 12.4."><line x1="62" y1="239.7" x2="682" y2="239.7" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="243.2" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">4</text><line x1="62" y1="191.1" x2="682" y2="191.1" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="194.6" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">6</text><line x1="62" y1="142.6" x2="682" y2="142.6" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="146.1" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">8</text><line x1="62" y1="94.0" x2="682" y2="94.0" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="97.5" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">10</text><line x1="62" y1="45.4" x2="682" y2="45.4" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="48.9" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">12</text><text x="62.0" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">10</text><text x="207.2" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">25</text><text x="317.1" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">50</text><text x="426.9" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">100</text><text x="536.8" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">200</text><text x="682.0" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">500</text><line x1="62" y1="264" x2="682" y2="264" stroke="var(--rule)" stroke-width="1"/><text x="372" y="304" text-anchor="middle" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">post-damage samples used to fine-tune (log)</text><text transform="translate(14,145) rotate(-90)" text-anchor="middle" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">control cost</text><line x1="62" y1="124.4" x2="682" y2="124.4" stroke="#CE7A1B" stroke-width="1.4" stroke-dasharray="3 3"/><text x="678" y="118.4" text-anchor="end" font-size="10.5" fill="#CE7A1B" font-family="IBM Plex Mono, monospace">stale model 8.748</text><line x1="62" y1="247.8" x2="682" y2="247.8" stroke="#38A08A" stroke-width="1.4" stroke-dasharray="5 4"/><text x="678" y="241.8" text-anchor="end" font-size="10.5" fill="#38A08A" font-family="IBM Plex Mono, monospace">healthy 3.667</text><line x1="62.0" y1="227.8" x2="62.0" y2="99.1" stroke="#3E7BC8" stroke-width="7" opacity=".16" stroke-linecap="round"/><line x1="207.2" y1="248.0" x2="207.2" y2="63.6" stroke="#3E7BC8" stroke-width="7" opacity=".16" stroke-linecap="round"/><line x1="317.1" y1="246.0" x2="317.1" y2="120.2" stroke="#3E7BC8" stroke-width="7" opacity=".16" stroke-linecap="round"/><line x1="426.9" y1="244.6" x2="426.9" y2="36.7" stroke="#3E7BC8" stroke-width="7" opacity=".16" stroke-linecap="round"/><line x1="536.8" y1="246.0" x2="536.8" y2="116.1" stroke="#3E7BC8" stroke-width="7" opacity=".16" stroke-linecap="round"/><line x1="682.0" y1="243.4" x2="682.0" y2="197.9" stroke="#3E7BC8" stroke-width="7" opacity=".16" stroke-linecap="round"/><line x1="62.0" y1="162.7" x2="62.0" y2="192.9" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><line x1="207.2" y1="155.1" x2="207.2" y2="184.8" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><line x1="317.1" y1="182.9" x2="317.1" y2="208.8" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><line x1="426.9" y1="182.8" x2="426.9" y2="213.4" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><line x1="536.8" y1="171.8" x2="536.8" y2="201.6" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><line x1="682.0" y1="215.8" x2="682.0" y2="235.5" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><path d="M62.0,177.8 L207.2,170.0 L317.1,195.8 L426.9,198.1 L536.8,186.7 L682.0,225.7" fill="none" stroke="#3E7BC8" stroke-width="2" stroke-linejoin="round"/><circle cx="62.0" cy="177.8" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="207.2" cy="170.0" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="317.1" cy="195.8" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="426.9" cy="198.1" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="536.8" cy="186.7" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="682.0" cy="225.7" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><rect x="70" y="31" width="10" height="10" rx="2" fill="#3E7BC8" opacity="1"/><text x="85" y="40" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">mean of 10 draws (95% CI)</text><rect x="267.0" y="31" width="10" height="10" rx="2" fill="#3E7BC8" opacity="0.28"/><text x="282.0" y="40" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">per-draw range</text></svg></div>
+<figcaption><b>Figure 3.</b> Control cost after fine-tuning on new post-damage transitions, 10 independent draws x 15 episodes = 150 rollouts per point. The mean (dark whiskers, 95% CI) barely moves between 10 and 200 samples, while the pale bands show the full per-draw range: individual adaptations at 25 and 100 samples land above the stale model, i.e. worse than not adapting at all. Only at 500 samples does the spread collapse.</figcaption>
+</figure>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>New samples</th><th>Cost</th><th>SEM</th><th>Gap closed</th><th>Per-draw range</th></tr></thead>
+      <tbody>
+        <tr><td>10</td><td>6.548</td><td>0.317</td><td>43%</td><td>4.49 – 9.79</td></tr>
+        <tr><td>25</td><td>6.871</td><td>0.312</td><td>37%</td><td>3.66 – 11.25</td></tr>
+        <tr><td>50</td><td>5.807</td><td>0.272</td><td>58%</td><td>3.74 – 8.92</td></tr>
+        <tr><td>100</td><td>5.713</td><td>0.321</td><td>60%</td><td>3.80 – 12.36</td></tr>
+        <tr><td>200</td><td>6.183</td><td>0.314</td><td>50%</td><td>3.74 – 9.09</td></tr>
+        <tr><td>500</td><td class="hi">4.579</td><td>0.206</td><td>82%</td><td>3.85 – 5.72</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 3.</b> Recovery curve, 150 rollouts per point. Reference points: healthy 3.667, stale 8.748. Every increment is significantly better than the stale model and significantly worse than healthy. The curve is not monotone, and the per-draw ranges at 25 and 100 samples include outcomes worse than not adapting at all.</figcaption>
+  </figure>
+
+  <p>Two readings are warranted. Adaptation is genuinely fast in the mean: ten transitions, under a second of operation, close 43% of the gap. But adaptation below 500 samples is <em>unreliable</em>: individual draws range from full recovery (3.66, matching healthy) to 12.36, considerably worse than the un-adapted model. Which ten transitions you happen to collect matters enormously. Only at 500 samples does the spread collapse (3.85–5.72) and the mean reach 82% recovery.</p>
+  <p>For an autonomous system this distinction is the important one. "Recovers from ten samples" is true on average and would, in deployment, sometimes make the robot worse.</p>
+
+  <div class="callout">
+    <span class="lbl">Why more data, not better data, may be the wrong fix</span>
+    <p>The best individual draws reach the healthy baseline exactly. Full recovery is achievable; it is simply not reliable. Since the damage is observable only under torque, we expect the informative transitions to be those with large applied torque, and that deliberate probing after detection would collapse the variance far faster than collecting more passive data. This is untested.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Two negative results on the recovery mechanism</h2>
+
+  <h3>The plateau is not a fine-tuning artifact</h3>
+  <p>We hypothesised that the residual gap reflected too small a fine-tuning budget. A sweep over budgets with a from-scratch control rejected this.</p>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>Samples</th><th>Budget</th><th>Control cost</th><th>Held-out MSE</th></tr></thead>
+      <tbody>
+        <tr><td>10</td><td>300 ep</td><td>6.198</td><td>0.002236</td></tr>
+        <tr><td>10</td><td>3000 ep</td><td>6.153</td><td>0.002755</td></tr>
+        <tr><td>10</td><td>scratch</td><td class="lo">7.450</td><td class="lo">0.149016</td></tr>
+        <tr class="rule-top"><td>50</td><td>300 ep</td><td>5.012</td><td>0.001920</td></tr>
+        <tr><td>50</td><td>3000 ep</td><td>6.641</td><td>0.002133</td></tr>
+        <tr><td>50</td><td>scratch</td><td class="lo">7.823</td><td class="lo">0.023793</td></tr>
+        <tr class="rule-top"><td>500</td><td>300 ep</td><td>5.956</td><td class="hi">0.000192</td></tr>
+        <tr><td>500</td><td>3000 ep</td><td class="hi">4.633</td><td class="hi">0.000218</td></tr>
+        <tr><td>500</td><td>scratch</td><td class="lo">7.119</td><td>0.000386</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 4.</b> Fine-tune budget sweep with from-scratch controls, 3 draws each. Fine-tuning beats from-scratch training at every sample count. At 500 samples the adapted model reaches MSE 0.000192 — better than the original healthy model scored on its own healthy body (0.000198) — while control remains ~25% worse than healthy.</figcaption>
+  </figure>
+
+  <p>The adapted model has learned the damaged body at least as well as the original ever knew the healthy one. Model quality is therefore eliminated as the explanation for the residual control gap. A subsequent planning-horizon sweep (20/30/40/60 steps) also failed to close it: longer horizons degraded control on <em>both</em> the damaged and healthy bodies, indicating a generic compounding-error effect in long model rollouts rather than anything damage-specific. Both of our mechanistic hypotheses for the residual gap are rejected.</p>
+
+  <h3>Prediction accuracy and control quality are anti-correlated during early adaptation</h3>
+  <p>At 10 and 50 new samples, every fine-tuned model is a <em>worse</em> predictor than the stale model (0.0022 and 0.0019 against 0.0013) while being a clearly <em>better</em> controller (6.20 and 5.01 against 8.38). A handful of samples corrects the single systematic error — the torque-scaling bias that compounds over the planning horizon — while overfitting adds scattered error the planner largely ignores.</p>
+  <p>The practical consequence is direct: a robot that used aggregate prediction accuracy as its "have I adapted yet?" signal would conclude it had gotten worse at the exact moment it got better.</p>
+</section>
+
+<section>
+  <h2><span class="num">7</span>Baselines, and a claim that did not survive</h2>
+  <p>We ran two model-free baselines, both scored through the identical evaluation loop.</p>
+
+  <h3>SAC retrained from scratch on the damaged body</h3>
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>Env steps</th><th>Cost</th><th>95% CI</th></tr></thead>
+      <tbody>
+        <tr><td>500</td><td>11.878</td><td>[10.482, 13.274]</td></tr>
+        <tr><td>1000</td><td>9.097</td><td>[8.198, 9.997]</td></tr>
+        <tr><td>2000</td><td class="lo">13.778</td><td>[12.985, 14.571]</td></tr>
+        <tr><td>5000</td><td>8.538</td><td>[4.781, 12.296]</td></tr>
+        <tr><td>10000</td><td class="hi">3.150</td><td>[2.719, 3.581]</td></tr>
+        <tr><td>20000</td><td>3.115</td><td>[2.687, 3.544]</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 5.</b> SAC from random initialisation on the damaged body. Retraining does not beat the stale model's 8.748 until past 5000 steps; for the first several thousand interactions the robot would be worse off retraining than doing nothing. The wide 5000-step interval reflects two of three seeds destabilising transiently.</figcaption>
+  </figure>
+
+  <p>Against this baseline the model-based advantage appears enormous: 10 post-damage samples versus roughly 10,000 environment steps to reach comparable control, a ~1000× difference. This is the comparison we initially reported.</p>
+
+  <h3>SAC pre-trained on the healthy body, then damaged</h3>
+  <p>It is also the wrong comparison. The self-model retained 2000 samples of prior knowledge and only had to learn what changed; SAC was made to relearn the entire task from nothing. The correct control pre-trains SAC on the healthy body (20,000 steps) and then exposes it to the damage.</p>
+
+  <figure class="chart">
+<div class="chart-title">Figure 2 — Model-based control is the more brittle option</div>
+<div class="chart-box"><svg viewBox="0 0 700 310" role="img" aria-label="Slope chart: model-based cost rises from 3.667 to 8.748 under damage while model-free rises only from 2.384 to 3.000."><line x1="62" y1="257.9" x2="682" y2="257.9" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="261.4" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">2</text><line x1="62" y1="196.9" x2="682" y2="196.9" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="200.4" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">4</text><line x1="62" y1="135.8" x2="682" y2="135.8" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="139.3" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">6</text><line x1="62" y1="74.8" x2="682" y2="74.8" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="78.3" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">8</text><text x="212.0" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">healthy body</text><text x="507.0" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">damaged body</text><line x1="62" y1="264" x2="682" y2="264" stroke="var(--rule)" stroke-width="1"/><text x="372" y="304" text-anchor="middle" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace"></text><text transform="translate(14,145) rotate(-90)" text-anchor="middle" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">control cost</text><line x1="212" y1="207.0" x2="507" y2="52.0" stroke="#CE7A1B" stroke-width="2"/><circle cx="212" cy="207.0" r="4.8" fill="#CE7A1B" stroke="var(--surface)" stroke-width="2"/><circle cx="507" cy="52.0" r="4.8" fill="#CE7A1B" stroke="var(--surface)" stroke-width="2"/><text x="201" y="210.5" text-anchor="end" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">3.667</text><text x="518" y="52.5" font-size="11" fill="var(--ink)" font-family="IBM Plex Mono, monospace">8.748</text><text x="518" y="66.0" font-size="10.5" fill="#CE7A1B" font-family="IBM Plex Mono, monospace">model-based + CEM   +139%</text><line x1="212" y1="246.2" x2="507" y2="227.4" stroke="#3E7BC8" stroke-width="2"/><circle cx="212" cy="246.2" r="4.8" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="507" cy="227.4" r="4.8" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><text x="201" y="249.7" text-anchor="end" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">2.384</text><text x="518" y="227.9" font-size="11" fill="var(--ink)" font-family="IBM Plex Mono, monospace">3.000</text><text x="518" y="241.4" font-size="10.5" fill="#3E7BC8" font-family="IBM Plex Mono, monospace">model-free SAC   +26%</text></svg></div>
+<figcaption><b>Figure 2.</b> Degradation under identical damage, both scored through the same evaluation loop. The planner commits to an explicit model and is confidently wrong when that model goes stale; the reactive policy keeps observing the true state and degrades gently. SAC's un-adapted policy on the damaged body (3.000) is better than the model-based system reaches after any amount of fine-tuning (best 4.579).</figcaption>
+</figure>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>New steps</th><th>Fresh buffer</th><th>Kept buffer</th></tr></thead>
+      <tbody>
+        <tr><td>0 (stale policy)</td><td colspan="2" style="text-align:right">3.000</td></tr>
+        <tr class="rule-top"><td>10</td><td>3.371 ± 0.27</td><td class="hi">2.958 ± 0.21</td></tr>
+        <tr><td>50</td><td>3.003 ± 0.19</td><td>2.964 ± 0.21</td></tr>
+        <tr><td>100</td><td class="lo">4.919 ± 0.46</td><td>2.972 ± 0.21</td></tr>
+        <tr><td>200</td><td class="lo">4.876 ± 1.11</td><td>2.950 ± 0.21</td></tr>
+        <tr><td>1000</td><td>3.029 ± 0.21</td><td>3.057 ± 0.20</td></tr>
+        <tr><td>5000</td><td>3.264 ± 0.19</td><td>2.997 ± 0.21</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 6.</b> SAC pre-trained on the healthy body (scoring 2.384 there), then adapted to the damaged body. The adaptation curve is flat because there was nothing to recover from. Clearing the replay buffer introduces transients (4.919, 4.876) in which adaptation makes the policy temporarily worse; retaining it is stable throughout.</figcaption>
+  </figure>
+
+  <div class="callout">
+    <span class="lbl">The comparison, corrected</span>
+    <p>The model-free policy degraded from 2.384 to 3.000 (+26%) where the model-based system degraded from 3.667 to 8.748 (+139%). SAC's un-adapted policy on the damaged body (3.000) is better than the model-based system achieves after any amount of fine-tuning (best 4.579). For this damage, model-free did not need to recover, and the 1000× figure does not describe a model-based advantage over model-free adaptation.</p>
+  </div>
+
+  <p>What does survive is regime-dependent. At matched pre-damage experience of 2000 interactions, the model-based system scores 3.667 while SAC scores 13.778 and is not yet a working controller. Model-based dominates when experience is scarce and loses once model-free can afford 20,000 steps.</p>
+</section>
+
+<section>
+  <h2><span class="num">8</span>Discussion</h2>
+  <p>The asymmetry in Table 6 is, we think, the transferable result. A reactive policy maps state to action and continues to observe the true state each step, so a change in dynamics degrades it gracefully. A planner instead commits to an explicit model and optimises against it; when that model is wrong, the planner is confidently wrong, and the error compounds over the horizon. In this sense a stale self-model is worse than no self-model.</p>
+  <p>That reframes what the self-model is for. Its distinctive capability in this study is not control quality, robustness, or recovery speed — the model-free policy matched or beat it on all three. Its distinctive capability is that it produces a <em>fault signal</em>: a 9.1× prediction-error spike that a reflex controller structurally cannot generate, because it makes no prediction that can be falsified. A system that detects its own staleness and falls back to a reactive controller, rather than planning with physics it no longer satisfies, is a more defensible architecture than either component alone.</p>
+  <p>This suggests the useful next experiment is not faster adaptation but a proper detector: threshold, latency, false-positive rate under normal operating variation, and a fallback policy triggered by it.</p>
+</section>
+
+<section>
+  <h2><span class="num">9</span>Limitations</h2>
+
+  <div class="limitation"><div class="n">1</div><p><b>One damage mode, one severity.</b> Mass increased 50%, which affects only the torque term. A perturbation touching the gravity term (length), or a discontinuous fault (a dead actuator, joint friction), could produce entirely different detection and degradation profiles. The model-free robustness result in particular may not generalise: the damage may simply be mild for a reactive policy.</p></div>
+  <div class="limitation"><div class="n">2</div><p><b>One pre-damage model seed.</b> Every model-based number traces to a single forward model trained with one seed. The healthy baseline of 3.667 is that specific model's performance, not a distribution.</p></div>
+  <div class="limitation"><div class="n">3</div><p><b>One environment, simulation only.</b> Pendulum-v1. No physical hardware, no sensor noise, no unmodelled dynamics.</p></div>
+  <div class="limitation"><div class="n">4</div><p><b>No detector is implemented.</b> We show a detection signal exists and is large. We do not provide a decision rule, a false-positive rate, or a detection-latency distribution — which is what "detects damage" would require to be a system-level claim rather than an observation.</p></div>
+  <div class="limitation"><div class="n">5</div><p><b>The recovery curve is not monotone.</b> With 10 draws per point the mean moves only 6.55 → 6.18 between 10 and 200 samples, and individual draws span roughly 3.7 to 12.4. We report this as high-variance adaptation rather than a clean scaling law.</p></div>
+  <div class="limitation"><div class="n">6</div><p><b>Unequal pre-damage experience in the baseline.</b> SAC received 20,000 pre-damage steps against the self-model's 2000 samples. Matching them does not rescue the comparison so much as split it into two regimes, as described in Section 7, but the asymmetry should be stated.</p></div>
+  <div class="limitation"><div class="n">7</div><p><b>No comparison to established adaptation methods.</b> Domain randomisation, meta-RL, online system identification, rapid motor adaptation and classical adaptive control are all directly relevant and untested here. Prior work on physical damage recovery, notably Cully et al. (2015), is not positioned against.</p></div>
+</section>
+
+<section>
+  <h2><span class="num">10</span>Conclusion</h2>
+  <p>A learned self-model detects a 50% mass change in its own body immediately (9.1× prediction-error spike) and recovers 43% of the resulting control loss from 10 new transitions, 82% from 500. But the same experiment shows model-based control is roughly 5× more brittle to that change than a model-free policy, which absorbed it without adapting at all.</p>
+  <p>We therefore do not claim faster recovery than model-free control. We claim that the model-based system is the one that needs to recover, and that its compensating advantage is knowing that it does.</p>
+</section>
+
+<section>
+  <h2><span class="num">11</span>Reproducibility</h2>
+  <div class="repro"><span class="k"># main damage experiment: detection, degradation, recovery, SAC from scratch (~27 min)</span><br>
+python3 damage_recovery.py<br><br>
+<span class="k"># recovery curve with 10 draws and matched-precision baselines (~32 min)</span><br>
+python3 recovery_v2.py<br><br>
+<span class="k"># SAC pre-trained then adapted, both buffer variants (~17 min)</span><br>
+python3 sac_adapt.py<br><br>
+<span class="k"># fine-tune budget sweep with from-scratch controls (~24 min)</span><br>
+python3 finetune_sensitivity.py<br><br>
+<span class="k"># planning-horizon sweep with healthy-body control (~12 min)</span><br>
+python3 horizon_sweep.py</div>
+  <p style="margin-top:16px;">All scripts import the shared model, planner and evaluation loop from the Rung 1 module, so both reports' results traverse identical evaluation code. Per-experiment results are written to JSON alongside the figures. Package versions: gymnasium 1.3.0, torch 2.13.0+cpu, stable-baselines3 2.9.0.</p>
+</section>
+
+<div class="paper-foot">
+  Companion report: <a href="planner-hides-the-model.html"><b>The Planner Hides the Model</b></a> (Rung 1), which develops the forward model, CEM planner and evaluation protocol used here.
+</div>
+</article>
+
+<footer>
+  <section class="band">
+    <canvas class="band-canvas" aria-hidden="true"></canvas>
+    <div class="band-inner">
+
+      <nav class="band-links">
+        <a href="index.html">Home</a>
+        <a href="notes.html">Notes</a>
+        <a href="mailto:viranium.labs@gmail.com">Contact</a>
+      </nav>
+
+      <div class="band-foot">
+        <a class="band-logo" href="index.html"><img src="assets/logo.png" alt="Viranium Labs"></a>
+        <div class="band-end">
+          <p class="band-tag">&#12302; Publish the limit, not the promise. &#12303;</p>
+          <p class="copyright">Viranium Labs &copy; 2026</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</footer>
+
+</body>
+</html>

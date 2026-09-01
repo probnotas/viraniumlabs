@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Notes — Viranium Labs</title>
-<link rel="stylesheet" href="style.css?v=14">
-<script src="script.js?v=14" defer></script>
+<link rel="stylesheet" href="style.css?v=16">
+<script src="script.js?v=16" defer></script>
 </head>
 <body>
 
@@ -23,6 +23,18 @@
 <main>
 
   <p>Working notes from the lab. Each entry corresponds to one rung of the ladder we are climbing, and each rung is a single question that can be answered no.</p>
+
+  <div class="entry">
+    <div class="meta">Rung 2 &middot; Technical report &middot; August 2026</div>
+    <h3><a class="entry-link" href="wrong-model-worse-than-none.html">A Wrong Model Is Worse Than None</a></h3>
+    <p>Damage detection and recovery in a learned self-model, and why model-based control is the more brittle option. A pendulum's mass is raised 50% mid-experiment. The model notices immediately &mdash; one-step prediction error rises 9.1&times; under random probing &mdash; and fine-tuning recovers 43% of the lost control from ten new transitions. The headline we intended did not survive its own control experiment: against a model-free policy pre-trained on the healthy body, model-based control degraded 139% where the reflex policy degraded 26%. We argue the defensible value of a self-model here is not planning but fault detection.</p>
+  </div>
+
+  <div class="entry">
+    <div class="meta">Rung 1 &middot; Technical report &middot; August 2026</div>
+    <h3><a class="entry-link" href="planner-hides-the-model.html">The Planner Hides the Model</a></h3>
+    <p>Why control cost is the wrong instrument for measuring sample efficiency in model-based control. Models trained on 50 samples controlled a pendulum as well as models trained on 5000, and the null result turned out to be an artifact of the measurement rather than a fact about the model: held-out prediction error fell 8&times; across the same sweep while a random-shooting planner converted none of it into better actions. A control curve measured without a separate model-quality probe is uninterpretable.</p>
+  </div>
 
   <div class="entry">
     <div class="meta">Rung 0 &middot; Coming soon</div>

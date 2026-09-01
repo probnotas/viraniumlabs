@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Planner Hides the Model &mdash; Viranium Labs</title>
+<link rel="stylesheet" href="style.css?v=16">
+<script src="script.js?v=16" defer></script>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="home" href="index.html">Home</a>
+  <a href="notes.html">Research</a>
+  <a href="mailto:viranium.labs@gmail.com">Contact</a>
+</nav>
+
+<article class="paper">
+
+<a class="back" href="notes.html">&larr; Research</a>
+
+<header class="mast">
+  <p class="eyebrow">Technical Report · Self Model Research · Rung 1</p>
+  <h1>The Planner Hides the Model</h1>
+  <p class="subtitle">Why control cost is the wrong instrument for measuring sample efficiency in model-based control</p>
+  <div class="byline">
+    <span>Pendulum-v1</span><span>Model-based control</span><span>August 2026</span><span>Author list to be finalised</span>
+  </div>
+</header>
+
+<div class="abstract">
+  <h2>Abstract</h2>
+  <p>We set out to measure how much interaction data a learned forward model needs before it can control a pendulum, and initially found no relationship at all: models trained on 50 samples controlled as well as models trained on 5000. We show this null result was an artifact of two separable causes, and that neither is about the model.</p>
+  <p>First, single-rollout evaluation is noise-dominated; averaging over 45 rollouts per condition removed a spurious non-monotonicity but left the curve flat. Second, and more consequentially, a random-shooting planner cannot exploit model improvements — held-out prediction error fell 8× across the sweep while control cost did not move. Replacing random shooting with the cross-entropy method improved control at every sample size (14–36%) and produced a statistically significant sample-efficiency trend for the first time (−0.512 ± 0.174 cost per decade of data, p = 0.0032).</p>
+  <p>A third change, predicting state <em>deltas</em> rather than absolute next states, improved held-out prediction 2.6–3.9× and control a further 14–28%, with 4 of 7 sample sizes separating at non-overlapping 95% confidence intervals. We report a model-free SAC reference for calibration. The practical conclusion is that control cost conflates model quality with planner capacity, and a model-based sample-efficiency curve measured without a separate model-quality probe is uninterpretable.</p>
+</div>
+
+<section>
+  <h2><span class="num">1</span>Introduction</h2>
+<figure class="diagram">
+<div class="chart-title">Figure 0 — What each measurement can and cannot see</div>
+<div class="diagram-box">
+<svg viewBox="0 0 700 210" role="img" aria-label="Diagram: random data trains a forward model, a planner searches with that model, and the environment executes the chosen action. Prediction error probes the model alone; control cost sees model and planner together.">
+  <defs><marker id="ah1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--ink-3)"/></marker></defs>
+  <g fill="none" stroke="var(--ink-3)" stroke-width="1.3" marker-end="url(#ah1)">
+    <path d="M138 56 H196"/><path d="M330 56 H392"/><path d="M520 84 V118"/><path d="M392 140 H340"/><path d="M196 140 H146 V84"/>
+  </g>
+  <g font-family="IBM Plex Mono, monospace" font-size="12">
+    <rect x="18" y="34" width="120" height="44" rx="2" fill="var(--surface-2)" stroke="var(--rule)"/>
+    <text x="78" y="53" text-anchor="middle" fill="var(--ink)">random data</text>
+    <text x="78" y="68" text-anchor="middle" fill="var(--ink-3)" font-size="10.5">50 – 5000</text>
+    <rect x="196" y="34" width="134" height="44" rx="2" fill="#3E7BC8" fill-opacity=".14" stroke="#3E7BC8"/>
+    <text x="263" y="53" text-anchor="middle" fill="var(--ink)">forward model</text>
+    <text x="263" y="68" text-anchor="middle" fill="var(--ink-3)" font-size="10.5">4→64→64→3</text>
+    <rect x="392" y="34" width="134" height="44" rx="2" fill="#CE7A1B" fill-opacity=".14" stroke="#CE7A1B"/>
+    <text x="459" y="53" text-anchor="middle" fill="var(--ink)">planner</text>
+    <text x="459" y="68" text-anchor="middle" fill="var(--ink-3)" font-size="10.5">20-step horizon</text>
+    <rect x="392" y="120" width="134" height="42" rx="2" fill="var(--surface-2)" stroke="var(--rule)"/>
+    <text x="459" y="139" text-anchor="middle" fill="var(--ink)">environment</text>
+    <text x="459" y="154" text-anchor="middle" fill="var(--ink-3)" font-size="10.5">200 steps</text>
+    <rect x="196" y="120" width="144" height="42" rx="2" fill="var(--surface-2)" stroke="var(--rule)"/>
+    <text x="268" y="139" text-anchor="middle" fill="var(--ink)">accumulate cost</text>
+    <text x="268" y="154" text-anchor="middle" fill="var(--ink-3)" font-size="10.5">‖s − [1,0,0]‖²</text>
+  </g>
+  <g font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-3)">
+    <text x="167" y="48" text-anchor="middle">train</text><text x="361" y="48" text-anchor="middle">scores plans</text>
+    <text x="532" y="106">action</text><text x="366" y="134" text-anchor="middle">state</text>
+  </g>
+  <g font-family="IBM Plex Mono, monospace" font-size="11">
+    <line x1="196" y1="90" x2="330" y2="90" stroke="#3E7BC8" stroke-width="2"/>
+    <text x="263" y="105" text-anchor="middle" fill="#3E7BC8">prediction error</text>
+    <line x1="196" y1="182" x2="526" y2="182" stroke="#CE7A1B" stroke-width="2"/>
+    <text x="361" y="197" text-anchor="middle" fill="#CE7A1B">control cost — sees model AND planner</text>
+  </g>
+</svg></div>
+<figcaption><b>Figure 0.</b> The conflation at the heart of this report. Held-out prediction error probes the model in isolation; control cost is a property of the model and planner jointly. A flat control curve is therefore consistent with two incompatible worlds — a model that is not improving, or a planner that cannot exploit one that is — and cannot distinguish them.</figcaption>
+</figure>
+
+  <p>Model-based control is widely motivated by sample efficiency: a learned dynamics model should extract more control performance per unit of environment interaction than a model-free policy. Verifying that claim requires measuring control quality as a function of training-set size — a sample-efficiency curve.</p>
+  <p>This report documents what happened when we measured such a curve carefully on a minimal system. The curve did not appear. Recovering it required fixing the measurement and then the planner, and the sequence of failures is more informative than the final numbers: at each stage the natural interpretation of the data was wrong, and only a separate probe of model quality distinguished the possibilities.</p>
+  <p>The central methodological point is simple but easy to miss in practice. Control cost is a property of the <em>system</em>, comprising the learned model and the planner that uses it. A flat control-vs-data curve is consistent with two very different worlds: the model is not improving with data, or the model is improving and the planner cannot convert that improvement into better actions. These demand opposite responses, and control cost alone cannot distinguish them.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>Setup</h2>
+
+  <h3>Environment and objective</h3>
+  <p>All experiments use Gymnasium's <code>Pendulum-v1</code>. The observation is <code>[cos θ, sin θ, θ̇]</code> and the action is a scalar torque in <code>[-2, 2]</code>. Torque limits are too weak to lift the pendulum directly, so a working controller must pump energy over several swings.</p>
+  <p>We score control with the squared distance from the upright, motionless target, averaged per step over a 200-step episode:</p>
+  <div class="repro">cost(s) = ‖s − [1, 0, 0]‖²      episode score = mean over 200 steps</div>
+  <p style="margin-top:15px;">Zero is perfect. Roughly 16 corresponds to unstructured flailing; 2–3 is strong control. Every control number in this report is on this scale.</p>
+
+  <h3>Forward model</h3>
+  <p>A three-layer MLP (4 → 64 → 64 → 3, ReLU) trained with Adam (lr 10⁻³) for 1000 full-batch epochs. Training data is a single pool of transitions collected under uniformly random torques; models at each sample size are trained on independently drawn subsets of that pool. In the delta parameterisation (Section 6) the target is <code>s' − s</code> and the predicted next state is <code>s + f(s, a)</code>.</p>
+
+  <h3>Planners</h3>
+  <p><b>Random shooting</b> samples 300 uniform 20-step action sequences, scores each by rolling it through the model and summing cost, and executes the first action of the best sequence. <b>CEM</b> maintains a Gaussian over 20-step action sequences (initialised at mean 0, std 1), and for 5 iterations samples 100 sequences, keeps the 10 lowest-cost elites, and refits the Gaussian to them; it executes the first action of the final mean. Both re-plan every step.</p>
+
+  <h3>Evaluation protocol</h3>
+  <p>Each condition trains 3 independent models and evaluates each over 15 episodes, giving 45 rollouts per point. All conditions face an identical set of 15 start-state seeds, a common-random-numbers scheme that removes start-state variance from between-condition comparisons. We report the mean of per-model means, the standard deviation across all rollouts, and standard errors from the pooled rollouts.</p>
+
+  <div class="callout">
+    <span class="lbl">Planner vectorisation</span>
+    <p>Both planners evaluate all candidate sequences as one batch rather than in a Python loop, a ~120× speedup that makes averaged evaluation tractable (roughly 9 hours to 5 minutes). We verified the batched random-shooting planner selects an identical action to the original per-candidate implementation when handed the same candidate set, across 5 trials to a tolerance of 10⁻⁵.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">3</span>The naive measurement fails</h2>
+  <p>Our first measurement trained one model per sample size and evaluated each with a single 200-step rollout. The result was not merely noisy but actively misleading, appearing to show that <em>less</em> data produced better control.</p>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>Samples</th><th>Cost (1 rollout)</th><th>Cost (45 rollouts)</th></tr></thead>
+      <tbody>
+        <tr><td>2000</td><td class="lo">16.018</td><td>8.106 ± 0.698</td></tr>
+        <tr><td>1000</td><td>6.014</td><td>7.816 ± 0.748</td></tr>
+        <tr><td>500</td><td>4.767</td><td>7.815 ± 0.605</td></tr>
+        <tr><td>200</td><td>4.097</td><td>9.487 ± 0.742</td></tr>
+        <tr><td>100</td><td>7.071</td><td>8.128 ± 0.556</td></tr>
+        <tr><td>50</td><td class="hi">4.047</td><td>8.275 ± 0.544</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 1.</b> Single-rollout evaluation versus 45-rollout averaging, random-shooting planner. The single-rollout column suggests 50 samples outperform 2000 by 4×. Averaging shows all conditions are statistically indistinguishable; the 16.018 was one unlucky episode.</figcaption>
+  </figure>
+
+  <p>With 45 rollouts per point, the non-monotonicity disappears entirely and every adjacent pair overlaps at 95% confidence. A weighted regression of cost on log₁₀(samples) finds no significant slope. The measurement is now trustworthy and reports <em>no effect of training data on control quality</em> across a 100× range.</p>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Isolating model quality</h2>
+  <p>A flat control curve admits two explanations. To separate them we measured the forward model directly, with no planner in the loop: hold out 1000 transitions never used for training, and report one-step prediction MSE on them.</p>
+
+  <figure class="chart">
+<div class="chart-title">Figure 2 — Held-out one-step prediction error</div>
+<div class="chart-box"><svg viewBox="0 0 700 310" role="img" aria-label="Log-log chart: prediction error falls monotonically with training data for both parameterisations, with delta consistently about three times lower than direct."><line x1="62" y1="264.0" x2="682" y2="264.0" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="267.5" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">0.0001</text><line x1="62" y1="160.6" x2="682" y2="160.6" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="164.1" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">0.001</text><line x1="62" y1="57.1" x2="682" y2="57.1" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="60.6" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">0.01</text><text x="62.0" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">5000</text><text x="185.4" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">2000</text><text x="278.7" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">1000</text><text x="372.0" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">500</text><text x="495.4" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">200</text><text x="588.7" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">100</text><text x="682.0" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">50</text><line x1="62" y1="264" x2="682" y2="264" stroke="var(--rule)" stroke-width="1"/><text x="372" y="304" text-anchor="middle" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">training samples (log, decreasing →)</text><text transform="translate(14,145) rotate(-90)" text-anchor="middle" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">held-out MSE (log)</text><line x1="62" y1="-51.3" x2="682" y2="-51.3" stroke="var(--ink-3)" stroke-width="1.2" stroke-dasharray="5 4"/><path d="M62.0,187.5 L185.4,182.7 L278.7,181.8 L372.0,179.6 L495.4,156.2 L588.7,138.4 L682.0,93.7" fill="none" stroke="#3E7BC8" stroke-width="2" stroke-linejoin="round"/><circle cx="62.0" cy="187.5" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="185.4" cy="182.7" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="278.7" cy="181.8" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="372.0" cy="179.6" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="495.4" cy="156.2" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="588.7" cy="138.4" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="682.0" cy="93.7" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><path d="M62.0,246.4 L185.4,244.3 L278.7,236.4 L372.0,227.8 L495.4,202.8 L588.7,181.6 L682.0,138.8" fill="none" stroke="#38A08A" stroke-width="2" stroke-linejoin="round"/><circle cx="62.0" cy="246.4" r="4.4" fill="#38A08A" stroke="var(--surface)" stroke-width="2"/><circle cx="185.4" cy="244.3" r="4.4" fill="#38A08A" stroke="var(--surface)" stroke-width="2"/><circle cx="278.7" cy="236.4" r="4.4" fill="#38A08A" stroke="var(--surface)" stroke-width="2"/><circle cx="372.0" cy="227.8" r="4.4" fill="#38A08A" stroke="var(--surface)" stroke-width="2"/><circle cx="495.4" cy="202.8" r="4.4" fill="#38A08A" stroke="var(--surface)" stroke-width="2"/><circle cx="588.7" cy="181.6" r="4.4" fill="#38A08A" stroke="var(--surface)" stroke-width="2"/><circle cx="682.0" cy="138.8" r="4.4" fill="#38A08A" stroke="var(--surface)" stroke-width="2"/><rect x="70" y="31" width="10" height="10" rx="2" fill="#3E7BC8"/><text x="85" y="40" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">direct next-state</text><rect x="215.8" y="31" width="10" height="10" rx="2" fill="#38A08A"/><text x="230.8" y="40" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">delta</text></svg></div>
+<figcaption><b>Figure 2.</b> Prediction error on 1000 never-trained-on transitions, measured in next-state space for both parameterisations so the numbers are comparable. Both curves fall monotonically with data — an 8.1x range for direct — while Figure 1's random-shooting curve stays flat over the same models. That mismatch is what identified the planner as the bottleneck. The identity baseline (predict no change, 0.1118) sits above the plotted range.</figcaption>
+</figure>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>Samples</th><th>Test MSE</th><th>vs. identity</th><th>Control cost</th></tr></thead>
+      <tbody>
+        <tr><td>5000</td><td class="hi">0.000549</td><td>203.7×</td><td>7.391 ± 0.650</td></tr>
+        <tr><td>2000</td><td>0.000611</td><td>183.0×</td><td>8.106 ± 0.698</td></tr>
+        <tr><td>1000</td><td>0.000624</td><td>179.1×</td><td>7.816 ± 0.748</td></tr>
+        <tr><td>500</td><td>0.000655</td><td>170.6×</td><td>7.815 ± 0.605</td></tr>
+        <tr><td>200</td><td>0.001101</td><td>101.5×</td><td>9.487 ± 0.742</td></tr>
+        <tr><td>100</td><td>0.001639</td><td>68.2×</td><td>8.128 ± 0.556</td></tr>
+        <tr><td>50</td><td class="lo">0.004429</td><td>25.2×</td><td>8.275 ± 0.544</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 2.</b> Held-out one-step prediction error against control cost, same models. Prediction improves monotonically by 8.1× across the sweep with tight error bars; control cost does not move. The identity baseline (predicting no change) scores 0.111757, so every model — including the 50-sample model — has learned substantial dynamics.</figcaption>
+  </figure>
+
+  <div class="callout">
+    <span class="lbl">Diagnosis</span>
+    <p>Model quality varies substantially with data, and control quality does not respond. The 50-sample model predicts 8× worse than the 5000-sample model yet controls indistinguishably. This is only possible if the controller is failing to convert model accuracy into better actions. The bottleneck is the planner.</p>
+  </div>
+
+  <p>The mechanism is straightforward in hindsight. Random shooting draws 300 samples from a 20-dimensional continuous action space, an essentially negligible fraction of it, so the arg-min over those candidates is close to a random selection regardless of how well the model scores them. A better model produces better <em>scores</em> for candidates that were never good enough to matter.</p>
+</section>
+
+<section>
+  <h2><span class="num">5</span>A planner that can exploit the model</h2>
+  <p>We replaced random shooting with CEM, holding the models, start states, and every other component fixed. Because the random seeds and draw order are unchanged, this trains the identical 21 models and evaluates them from the identical 15 start states: a controlled A/B on the planner alone.</p>
+  <p>Before running the sweep we verified CEM is in fact the stronger optimiser on this objective. Across 20 states on a trained model, CEM achieved lower predicted plan cost than random shooting on 20 of 20, reducing mean predicted cost from 219.5 to 188.3. Its final mean sequence scored 188.3 against the best sampled elite at 185.0, confirming that collapsing elites to their mean loses little here.</p>
+
+  <figure class="chart">
+<div class="chart-title">Figure 1 — Control cost across three system configurations</div>
+<div class="chart-box"><svg viewBox="0 0 700 310" role="img" aria-label="Line chart: three control-cost curves versus training samples. Random shooting is flat near cost 8; CEM sits near 5.5 to 7; CEM with delta targets near 4 to 5.2."><line x1="62" y1="246.4" x2="682" y2="246.4" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="249.9" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">4</text><line x1="62" y1="187.6" x2="682" y2="187.6" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="191.1" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">6</text><line x1="62" y1="128.8" x2="682" y2="128.8" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="132.3" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">8</text><line x1="62" y1="70.1" x2="682" y2="70.1" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="73.6" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">10</text><text x="62.0" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">5000</text><text x="185.4" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">2000</text><text x="278.7" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">1000</text><text x="372.0" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">500</text><text x="495.4" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">200</text><text x="588.7" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">100</text><text x="682.0" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">50</text><line x1="62" y1="264" x2="682" y2="264" stroke="var(--rule)" stroke-width="1"/><text x="372" y="304" text-anchor="middle" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">training samples (log, decreasing →)</text><text transform="translate(14,145) rotate(-90)" text-anchor="middle" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">control cost</text><line x1="62.0" y1="109.3" x2="62.0" y2="184.2" stroke="#CE7A1B" stroke-width="1.4" opacity=".55"/><line x1="185.4" y1="85.5" x2="185.4" y2="165.9" stroke="#CE7A1B" stroke-width="1.4" opacity=".55"/><line x1="278.7" y1="91.2" x2="278.7" y2="177.3" stroke="#CE7A1B" stroke-width="1.4" opacity=".55"/><line x1="372.0" y1="99.4" x2="372.0" y2="169.1" stroke="#CE7A1B" stroke-width="1.4" opacity=".55"/><line x1="495.4" y1="42.4" x2="495.4" y2="127.9" stroke="#CE7A1B" stroke-width="1.4" opacity=".55"/><line x1="588.7" y1="93.1" x2="588.7" y2="157.1" stroke="#CE7A1B" stroke-width="1.4" opacity=".55"/><line x1="682.0" y1="89.4" x2="682.0" y2="152.1" stroke="#CE7A1B" stroke-width="1.4" opacity=".55"/><path d="M62.0,146.7 L185.4,125.7 L278.7,134.2 L372.0,134.3 L495.4,85.1 L588.7,125.1 L682.0,120.8" fill="none" stroke="#CE7A1B" stroke-width="2" stroke-linejoin="round"/><circle cx="62.0" cy="146.7" r="4.4" fill="#CE7A1B" stroke="var(--surface)" stroke-width="2"/><circle cx="185.4" cy="125.7" r="4.4" fill="#CE7A1B" stroke="var(--surface)" stroke-width="2"/><circle cx="278.7" cy="134.2" r="4.4" fill="#CE7A1B" stroke="var(--surface)" stroke-width="2"/><circle cx="372.0" cy="134.3" r="4.4" fill="#CE7A1B" stroke="var(--surface)" stroke-width="2"/><circle cx="495.4" cy="85.1" r="4.4" fill="#CE7A1B" stroke="var(--surface)" stroke-width="2"/><circle cx="588.7" cy="125.1" r="4.4" fill="#CE7A1B" stroke="var(--surface)" stroke-width="2"/><circle cx="682.0" cy="120.8" r="4.4" fill="#CE7A1B" stroke="var(--surface)" stroke-width="2"/><line x1="62.0" y1="173.1" x2="62.0" y2="210.7" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><line x1="185.4" y1="191.0" x2="185.4" y2="225.3" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><line x1="278.7" y1="175.9" x2="278.7" y2="225.6" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><line x1="372.0" y1="189.2" x2="372.0" y2="217.7" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><line x1="495.4" y1="169.6" x2="495.4" y2="203.7" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><line x1="588.7" y1="173.9" x2="588.7" y2="197.6" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><line x1="682.0" y1="133.7" x2="682.0" y2="177.5" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><path d="M62.0,191.9 L185.4,208.2 L278.7,200.8 L372.0,203.4 L495.4,186.7 L588.7,185.8 L682.0,155.6" fill="none" stroke="#3E7BC8" stroke-width="2" stroke-linejoin="round"/><circle cx="62.0" cy="191.9" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="185.4" cy="208.2" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="278.7" cy="200.8" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="372.0" cy="203.4" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="495.4" cy="186.7" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="588.7" cy="185.8" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="682.0" cy="155.6" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><line x1="62.0" y1="219.3" x2="62.0" y2="254.7" stroke="#38A08A" stroke-width="1.4" opacity=".55"/><line x1="185.4" y1="228.7" x2="185.4" y2="262.4" stroke="#38A08A" stroke-width="1.4" opacity=".55"/><line x1="278.7" y1="214.4" x2="278.7" y2="252.6" stroke="#38A08A" stroke-width="1.4" opacity=".55"/><line x1="372.0" y1="206.8" x2="372.0" y2="244.0" stroke="#38A08A" stroke-width="1.4" opacity=".55"/><line x1="495.4" y1="217.5" x2="495.4" y2="253.8" stroke="#38A08A" stroke-width="1.4" opacity=".55"/><line x1="588.7" y1="196.9" x2="588.7" y2="235.1" stroke="#38A08A" stroke-width="1.4" opacity=".55"/><line x1="682.0" y1="199.5" x2="682.0" y2="225.1" stroke="#38A08A" stroke-width="1.4" opacity=".55"/><path d="M62.0,237.0 L185.4,245.5 L278.7,233.5 L372.0,225.4 L495.4,235.6 L588.7,216.0 L682.0,212.3" fill="none" stroke="#38A08A" stroke-width="2" stroke-linejoin="round"/><circle cx="62.0" cy="237.0" r="4.4" fill="#38A08A" stroke="var(--surface)" stroke-width="2"/><circle cx="185.4" cy="245.5" r="4.4" fill="#38A08A" stroke="var(--surface)" stroke-width="2"/><circle cx="278.7" cy="233.5" r="4.4" fill="#38A08A" stroke="var(--surface)" stroke-width="2"/><circle cx="372.0" cy="225.4" r="4.4" fill="#38A08A" stroke="var(--surface)" stroke-width="2"/><circle cx="495.4" cy="235.6" r="4.4" fill="#38A08A" stroke="var(--surface)" stroke-width="2"/><circle cx="588.7" cy="216.0" r="4.4" fill="#38A08A" stroke="var(--surface)" stroke-width="2"/><circle cx="682.0" cy="212.3" r="4.4" fill="#38A08A" stroke="var(--surface)" stroke-width="2"/><rect x="70" y="31" width="10" height="10" rx="2" fill="#CE7A1B" opacity="1"/><text x="85" y="40" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">random shooting + direct</text><rect x="260.6" y="31" width="10" height="10" rx="2" fill="#3E7BC8" opacity="1"/><text x="275.6" y="40" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">CEM + direct</text><rect x="374.40000000000003" y="31" width="10" height="10" rx="2" fill="#38A08A" opacity="1"/><text x="389.40000000000003" y="40" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">CEM + delta</text></svg></div>
+<figcaption><b>Figure 1.</b> Control cost versus training-set size, 45 rollouts per point, whiskers are 95% CIs. Random shooting (amber) is flat: no relationship between data and control. CEM (blue) lowers cost at every size and produces a significant downward trend. Delta targets (teal) lower it further. Identical models and start-state seeds across all three.</figcaption>
+</figure>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>Samples</th><th>Random shooting</th><th>CEM</th><th>Improvement</th></tr></thead>
+      <tbody>
+        <tr><td>5000</td><td>7.391 ± 0.650</td><td>5.853 ± 0.326</td><td>20.8%</td></tr>
+        <tr><td>2000</td><td>8.106 ± 0.698</td><td>5.300 ± 0.298</td><td>34.6%</td></tr>
+        <tr><td>1000</td><td>7.816 ± 0.748</td><td>5.552 ± 0.432</td><td>29.0%</td></tr>
+        <tr><td>500</td><td>7.815 ± 0.605</td><td>5.461 ± 0.247</td><td>30.1%</td></tr>
+        <tr><td>200</td><td>9.487 ± 0.742</td><td>6.032 ± 0.296</td><td>36.4%</td></tr>
+        <tr><td>100</td><td>8.128 ± 0.556</td><td>6.063 ± 0.206</td><td>25.4%</td></tr>
+        <tr><td>50</td><td>8.275 ± 0.544</td><td>7.090 ± 0.380</td><td>14.3%</td></tr>
+        <tr class="rule-top"><td>trend / decade</td><td>not significant</td><td>−0.512 ± 0.174</td><td>p = 0.0032</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 3.</b> Random shooting versus CEM on identical models and start states. CEM improves control at every sample size and produces a significant downward trend where random shooting produced none. Improvement is smallest at 50 samples (14.3%), consistent with a better planner mattering most when there is a better model to exploit.</figcaption>
+  </figure>
+
+  <div class="callout">
+    <span class="lbl">A note on significance testing</span>
+    <p>Only 2 of 21 pairwise comparisons separate at non-overlapping 95% confidence intervals, and <em>no</em> adjacent pair does. An adjacent-pairs-only test would have declared this curve flat. Gradual degradation leaves each neighbouring step inside the noise while distant sizes separate; the trend is significant because all seven points lean the same way, not because any two are individually distinguishable. We report all pairs plus a weighted trend fit for this reason.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Delta parameterisation</h2>
+  <p>Predicting <code>s' − s</code> rather than <code>s'</code> is standard practice in model-based RL. We evaluated it here as a single-variable change, holding architecture, optimiser, epoch budget, planner and evaluation fixed. Prediction error is measured in next-state space in both parameterisations — the delta model's output is added back onto the input state before scoring — so the two numbers are directly comparable rather than being measured on targets of different magnitude.</p>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>Samples</th><th>MSE direct</th><th>MSE delta</th><th>Gain</th><th>Cost direct</th><th>Cost delta</th><th>Gain</th></tr></thead>
+      <tbody>
+        <tr><td>5000</td><td>0.000549</td><td class="hi">0.000148</td><td>3.70×</td><td>5.853</td><td class="hi">4.318</td><td>26.2%</td></tr>
+        <tr><td>2000</td><td>0.000611</td><td class="hi">0.000155</td><td>3.93×</td><td>5.300</td><td class="hi">4.028</td><td>24.0%</td></tr>
+        <tr><td>1000</td><td>0.000624</td><td class="hi">0.000185</td><td>3.36×</td><td>5.552</td><td class="hi">4.438</td><td>20.1%</td></tr>
+        <tr><td>500</td><td>0.000655</td><td class="hi">0.000224</td><td>2.92×</td><td>5.461</td><td class="hi">4.715</td><td>13.7%</td></tr>
+        <tr><td>200</td><td>0.001101</td><td class="hi">0.000391</td><td>2.81×</td><td>6.032</td><td class="hi">4.365</td><td>27.6%</td></tr>
+        <tr><td>100</td><td>0.001639</td><td class="hi">0.000626</td><td>2.62×</td><td>6.063</td><td class="hi">5.033</td><td>17.0%</td></tr>
+        <tr><td>50</td><td>0.004429</td><td class="hi">0.001624</td><td>2.73×</td><td>7.090</td><td class="hi">5.159</td><td>27.2%</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 4.</b> Delta versus direct next-state prediction, both measured in next-state space. Prediction improves 2.6–3.9× and control 14–28% at every sample size. Four of seven sizes (5000, 2000, 200, 50) separate at non-overlapping 95% CIs on control cost. The trend strengthens slightly to −0.498 ± 0.157 per decade (p = 0.0015).</figcaption>
+  </figure>
+
+  <p>This is the only intervention in the study that improved control by improving the <em>model</em>, and it partially revises the conclusion of Section 4. The planner was the dominant bottleneck under random shooting; with CEM in place, model quality visibly matters again. The two findings are complementary rather than contradictory: bottlenecks are ordered, and fixing one exposes the next.</p>
+  <p>The effect on sample efficiency is substantial. The delta model at 50 samples (control 5.159) outperforms the direct model at 5000 (5.853), and on prediction, delta-at-50 beats direct-at-200.</p>
+</section>
+
+<section>
+  <h2><span class="num">7</span>Model-free reference</h2>
+  <p>For calibration we trained SAC (Stable-Baselines3 defaults) on the same environment, scored through the identical evaluation loop — same cost function, same 200-step episodes, same 15 start-state seeds — by injecting its deterministic policy in place of the planner. Three independent training runs, evaluated at checkpoints.</p>
+
+  <figure class="chart">
+<div class="chart-title">Figure 3 — Model-free reference</div>
+<div class="chart-box"><svg viewBox="0 0 700 310" role="img" aria-label="Line chart: SAC control cost against environment steps, falling from about 8.7 at 500 steps to 2.3 at 50000, with a spike at 2000 steps."><line x1="62" y1="260.1" x2="682" y2="260.1" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="263.6" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">2</text><line x1="62" y1="221.1" x2="682" y2="221.1" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="224.6" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">4</text><line x1="62" y1="182.1" x2="682" y2="182.1" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="185.6" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">6</text><line x1="62" y1="143.0" x2="682" y2="143.0" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="146.5" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">8</text><line x1="62" y1="104.0" x2="682" y2="104.0" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="107.5" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">10</text><line x1="62" y1="65.0" x2="682" y2="65.0" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="68.5" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">12</text><line x1="62" y1="26.0" x2="682" y2="26.0" stroke="var(--rule-soft)" stroke-width="1"/><text x="53" y="29.5" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">14</text><text x="62.0" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">500</text><text x="155.3" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">1k</text><text x="248.6" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">2k</text><text x="372.0" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">5k</text><text x="465.3" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">10k</text><text x="558.6" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">20k</text><text x="682.0" y="282" text-anchor="middle" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono, monospace">50k</text><line x1="62" y1="264" x2="682" y2="264" stroke="var(--rule)" stroke-width="1"/><text x="372" y="304" text-anchor="middle" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">environment steps of training (log)</text><text transform="translate(14,145) rotate(-90)" text-anchor="middle" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">control cost</text><rect x="62" y="207.1" width="620" height="13.4" fill="#38A08A" opacity=".16"/><text x="676" y="201.1" text-anchor="end" font-size="10.5" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">model-based band (4.03–4.72, from 50–5000 samples)</text><line x1="62.0" y1="111.9" x2="62.0" y2="146.6" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><line x1="155.3" y1="159.3" x2="155.3" y2="177.8" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><line x1="248.6" y1="42.2" x2="248.6" y2="56.5" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><line x1="372.0" y1="182.4" x2="372.0" y2="245.7" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><line x1="465.3" y1="243.2" x2="465.3" y2="257.2" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><line x1="558.6" y1="246.1" x2="558.6" y2="259.1" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><line x1="682.0" y1="247.8" x2="682.0" y2="259.9" stroke="#3E7BC8" stroke-width="1.4" opacity=".55"/><path d="M62.0,129.2 L155.3,168.5 L248.6,49.4 L372.0,214.0 L465.3,250.2 L558.6,252.6 L682.0,253.8" fill="none" stroke="#3E7BC8" stroke-width="2" stroke-linejoin="round"/><circle cx="62.0" cy="129.2" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="155.3" cy="168.5" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="248.6" cy="49.4" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="372.0" cy="214.0" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="465.3" cy="250.2" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="558.6" cy="252.6" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><circle cx="682.0" cy="253.8" r="4.4" fill="#3E7BC8" stroke="var(--surface)" stroke-width="2"/><rect x="70" y="31" width="10" height="10" rx="2" fill="#3E7BC8"/><text x="85" y="40" font-size="11" fill="var(--ink-2)" font-family="IBM Plex Mono, monospace">SAC (model-free)</text></svg></div>
+<figcaption><b>Figure 3.</b> SAC on the same environment, scored through the identical evaluation loop. The spike at 2000 steps reproduced on all three seeds and is the entropy-driven exploration phase; the wide interval at 5000 reflects two of three seeds destabilising transiently. SAC enters the model-based band at roughly 2600–5000 steps and converges to 2.321, better than the model-based system's best of 4.028.</figcaption>
+</figure>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>Env steps</th><th>Cost</th><th>95% CI</th></tr></thead>
+      <tbody>
+        <tr><td>500</td><td>8.708</td><td>[7.819, 9.597]</td></tr>
+        <tr><td>1000</td><td>6.693</td><td>[6.220, 7.167]</td></tr>
+        <tr><td>2000</td><td class="lo">12.803</td><td>[12.438, 13.168]</td></tr>
+        <tr><td>5000</td><td>4.361</td><td>[2.739, 5.983]</td></tr>
+        <tr><td>10000</td><td>2.508</td><td>[2.149, 2.868]</td></tr>
+        <tr><td>20000</td><td>2.384</td><td>[2.053, 2.714]</td></tr>
+        <tr><td>50000</td><td class="hi">2.321</td><td>[2.010, 2.632]</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 5.</b> SAC on Pendulum-v1, scored on the model-based cost metric. The 2000-step spike reproduced on all three seeds and is SAC's entropy-driven exploration phase. The 5000-step interval is wide because two of three seeds destabilised transiently there.</figcaption>
+  </figure>
+
+  <p>SAC reaches the model-based system's performance band (~4.0–4.7) at roughly 2600–5000 environment steps, and converges to 2.321 — better than the model-based controller's best of 4.028. The comparison should be read as regime-dependent rather than as a winner: the model-based system attains 4.028 from 2000 samples of purely random data, where SAC at 2000 steps is at 12.803 and not yet a working controller; given 10× more interaction, SAC is better.</p>
+  <p>Two asymmetries should be noted. SAC is scored on a cost function it does not optimise (it maximises Pendulum's native reward), a mild handicap. Conversely, the sample comparison ignores that CEM expends roughly 10,000 model rollouts per control step at test time: the model-based system trades compute for samples.</p>
+</section>
+
+<section>
+  <h2><span class="num">8</span>Discussion</h2>
+  <p>The headline methodological result is that a model-based sample-efficiency curve should not be reported without a separate model-quality probe. In this study the control curve was flat while prediction error moved by 8×, and the correct response (change the planner) is the opposite of what the flat curve naively suggests (collect more data, or conclude the task saturates early).</p>
+  <p>The prediction curve also revealed a plateau invisible in the control data: from 5000 down to 500 samples, held-out MSE barely moves (0.000549 to 0.000655). Roughly 500 samples appear to saturate what this architecture extracts from random-action pendulum data, so the top half of the sweep could not have separated under any planner. That is useful information for designing the next experiment, and it is only available from the model probe.</p>
+  <p>Finally, the ordering of bottlenecks matters for interpretation. Two of our three interventions (averaging, CEM) fixed things that were not the model; the third (delta targets) fixed the model and was the largest single gain. A study that had tried delta targets first, under random shooting, would likely have measured a much smaller effect and drawn the wrong conclusion about its value.</p>
+</section>
+
+<section>
+  <h2><span class="num">9</span>Limitations</h2>
+
+  <div class="limitation"><div class="n">1</div><p><b>Single environment.</b> All results are from Pendulum-v1. The claim that control cost conflates model and planner is general, but the specific magnitudes are not, and we have not shown the pattern reproduces on higher-dimensional systems.</p></div>
+  <div class="limitation"><div class="n">2</div><p><b>Fixed epoch budget.</b> Every model trains for exactly 1000 full-batch epochs regardless of dataset size, so large-data models receive the same gradient budget spread over 100× more data and are the least converged. This compresses the high-data end of every curve and is the most likely reason 5000 samples rarely beat 2000. We left it fixed to change one variable at a time; scaling epochs with <code>n</code> or training to a validation threshold would likely steepen the curves.</p></div>
+  <div class="limitation"><div class="n">3</div><p><b>The trend is real but weak.</b> Only 1–2 of 21 pairwise comparisons separate individually. Significance derives from the consistent direction of all seven points, not from any pair being distinguishable. Raising evaluation episodes from 15 to ~40 would roughly halve the error bars.</p></div>
+  <div class="limitation"><div class="n">4</div><p><b>Three model seeds per point.</b> Adequate for the aggregate trend, but insufficient to characterise model-to-model variability, which later work on this system found to be substantial at small sample sizes.</p></div>
+  <div class="limitation"><div class="n">5</div><p><b>Random-action data only.</b> Every model trains on uniformly random torques, which explore the upright region poorly. Iterative data collection would likely change the curves materially and is the obvious next step.</p></div>
+  <div class="limitation"><div class="n">6</div><p><b>One planner family.</b> CEM with a fixed 20-step horizon and 100 candidates. We have not established whether 4.0 is a model limit or a planner limit; a stronger optimiser might extract more from the same models.</p></div>
+</section>
+
+<section>
+  <h2><span class="num">10</span>Conclusion</h2>
+  <p>Measured naively, this system showed no sample-efficiency curve. Measured properly, it shows a significant one (−0.498 ± 0.157 cost per decade of data, p = 0.0015), but only after the planner was strong enough to exploit the model and the model was parameterised to predict deltas. Mean control cost improved from 8.15 to 4.36 across the study without any change to the model architecture, training data, or environment.</p>
+  <p>The transferable lesson is diagnostic rather than architectural: when a model-based control result is flat, measure the model separately before concluding anything about data.</p>
+</section>
+
+<section>
+  <h2><span class="num">11</span>Reproducibility</h2>
+  <div class="repro"><span class="k"># both model-based experiments (~9 min)</span><br>
+python3 sample_effeciency.py<br><br>
+<span class="k"># prediction-only (~0.5 min) / control-only (~8.6 min)</span><br>
+python3 sample_effeciency.py --experiment prediction<br>
+python3 sample_effeciency.py --experiment control<br><br>
+<span class="k"># model-free reference (~26 min)</span><br>
+python3 sac_baseline.py<br><br>
+<span class="k"># planner equivalence check</span><br>
+python3 test_planner_equivalence.py<br><br>
+<span class="k"># delta vs direct, side by side</span><br>
+python3 compare_delta.py</div>
+  <p style="margin-top:16px;">All runs are seeded from a single master seed. Set <code>PREDICT_DELTA = False</code> to reproduce the direct-parameterisation results. Per-condition results are written to JSON alongside the figures. Package versions: gymnasium 1.3.0, torch 2.13.0+cpu, stable-baselines3 2.9.0.</p>
+</section>
+
+<div class="paper-foot">
+  Companion report: <a href="wrong-model-worse-than-none.html"><b>A Wrong Model Is Worse Than None</b></a> (Rung 2), which applies this system to damage detection and recovery.
+</div>
+</article>
+
+<footer>
+  <section class="band">
+    <canvas class="band-canvas" aria-hidden="true"></canvas>
+    <div class="band-inner">
+
+      <nav class="band-links">
+        <a href="index.html">Home</a>
+        <a href="notes.html">Notes</a>
+        <a href="mailto:viranium.labs@gmail.com">Contact</a>
+      </nav>
+
+      <div class="band-foot">
+        <a class="band-logo" href="index.html"><img src="assets/logo.png" alt="Viranium Labs"></a>
+        <div class="band-end">
+          <p class="band-tag">&#12302; Publish the limit, not the promise. &#12303;</p>
+          <p class="copyright">Viranium Labs &copy; 2026</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</footer>
+
+</body>
+</html>
