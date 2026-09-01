@@ -65,46 +65,8 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  background: #151715;
+  background: #0B0C0B;
   isolation: isolate;
-}
-
-.bgvid {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
-  background: #151715;
-  pointer-events: none;
-  filter: saturate(0.75) contrast(1.05) brightness(0.62);
-  animation: slowzoom 32s ease-in-out infinite alternate;
-}
-
-@keyframes slowzoom {
-  to { transform: scale(1.09); }
-}
-
-.hero::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1.3px);
-  background-size: 4px 4px;
-  z-index: 2;
-  pointer-events: none;
-}
-
-.hero::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)),
-    linear-gradient(180deg, rgba(11,12,11,0.3), rgba(11,12,11,0) 32%, rgba(11,12,11,0.25) 80%, rgba(11,12,11,0.75));
-  z-index: 2;
-  pointer-events: none;
 }
 
 .mark {
@@ -166,7 +128,7 @@ body {
 .reveal.in { opacity: 1; transform: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .bgvid, .mark, .hero-cta { animation: none; }
+  .mark, .hero-cta { animation: none; }
   .reveal { opacity: 1; transform: none; transition: none; }
   html { scroll-behavior: auto; }
 }

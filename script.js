@@ -17,62 +17,6 @@
   navState();
   window.addEventListener('scroll', navState, { passive: true });
 
-  /* hero video: browsers block autoplay in several situations (iOS low power
-     mode, data saver, a cold tab), and the fallback is a tap-to-play overlay.
-     Keep asking politely instead, and let the poster carry the frame until it
-     takes -- the slow zoom runs on the poster too, so a blocked video still
-     reads as intentional rather than broken. */
-  var vid = document.querySelector('.bgvid');
-  if (vid) {
-    /* Safari honours the muted property, not just the attribute, and refuses
-       inline autoplay unless both are set before the first play() */
-    vid.muted = true;
-    vid.defaultMuted = true;
-    vid.playsInline = true;
-    vid.setAttribute('muted', '');
-
-    var lastTry = 0;
-    function playHero() {
-      if (!vid.paused && !vid.ended) return;
-      var now = Date.now();
-      if (now - lastTry < 400) return;      // don't spin if play() keeps failing
-      lastTry = now;
-      var p = vid.play();
-      if (p && p.catch) p.catch(function () { /* still blocked; wait it out */ });
-    }
-
-    ['loadedmetadata', 'loadeddata', 'canplay', 'canplaythrough'].forEach(function (ev) {
-      vid.addEventListener(ev, playHero);
-    });
-
-    /* a pause we did not ask for: backgrounding on iOS, or a blocked start */
-    vid.addEventListener('pause', function () {
-      if (!document.hidden) playHero();
-    });
-
-    /* any gesture anywhere unblocks playback, so the first one is enough */
-    var gestures = ['pointerdown', 'touchstart', 'touchend', 'click', 'keydown', 'scroll'];
-    function onGesture() {
-      playHero();
-      if (!vid.paused) {
-        gestures.forEach(function (ev) {
-          document.removeEventListener(ev, onGesture, gestureOpts);
-        });
-      }
-    }
-    var gestureOpts = { passive: true, capture: true };
-    gestures.forEach(function (ev) {
-      document.addEventListener(ev, onGesture, gestureOpts);
-    });
-
-    document.addEventListener('visibilitychange', function () {
-      if (!document.hidden) playHero();
-    });
-    window.addEventListener('pageshow', playHero);   // bfcache restore
-
-    playHero();
-  }
-
   /* footer band: animated halftone wave that reacts to the cursor */
   var band = document.querySelector('.band');
   var canvas = document.querySelector('.band-canvas');
