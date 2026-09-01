@@ -158,34 +158,4 @@
     }, { passive: true });
   }
 
-  /* hero parallax: copy drifts up and fades, wordmark lags behind the scroll */
-  var copy = document.querySelector('.hero-copy');
-  var giant = document.querySelector('.giant');
-
-  /* a finished CSS animation keeps overriding inline styles, so clear it once
-     the entrance is done — otherwise the parallax below never takes effect */
-  [copy, giant].forEach(function (el) {
-    if (el) el.addEventListener('animationend', function () { el.style.animation = 'none'; });
-  });
-
-  if (!reduced && (copy || giant)) {
-    var ticking = false;
-    function parallax() {
-      var y = window.scrollY;
-      if (copy) {
-        copy.style.transform = 'translateY(' + (-y * 0.28) + 'px)';
-        copy.style.opacity = Math.max(0, 1 - y / 420);
-      }
-      if (giant) {
-        giant.style.transform = 'translateY(' + (y * 0.16) + 'px)';
-      }
-      ticking = false;
-    }
-    window.addEventListener('scroll', function () {
-      if (!ticking) {
-        ticking = true;
-        requestAnimationFrame(parallax);
-      }
-    }, { passive: true });
-  }
 })();

@@ -103,39 +103,20 @@ body {
   pointer-events: none;
 }
 
-.hero-copy {
+.mark {
   position: relative;
   z-index: 3;
-  margin: 14px auto 0;
-  max-width: 360px;
-  padding: 0 24px;
-  text-align: center;
-  font-family: 'Inter', sans-serif;
-  font-size: 16px;
-  line-height: 1.5;
-  color: #DEDFDA;
-  animation: riseIn 1.2s cubic-bezier(.2,.7,.3,1) 0.45s both;
+  width: clamp(190px, 25vw, 400px);
+  margin: 0 auto;
+  line-height: 0;
+  animation: riseIn 1.4s cubic-bezier(.2,.7,.3,1) 0.2s both;
   will-change: transform, opacity;
 }
 
-.hero-copy p + p { margin-top: 22px; }
-
-.giant {
-  position: relative;
-  z-index: 3;
-  width: 90%;
-  margin: 0 auto;
-  line-height: 0;
-  mix-blend-mode: difference;
-  animation: riseIn 1.4s cubic-bezier(.2,.7,.3,1) 0.2s both;
-  will-change: transform;
-}
-
-.giant img {
+.mark img {
   display: block;
   width: 100%;
   height: auto;
-  filter: brightness(0) invert(1);
 }
 
 @keyframes riseIn {
@@ -152,9 +133,63 @@ body {
 .reveal.in { opacity: 1; transform: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .bgvid, .hero-copy, .giant { animation: none; }
+  .bgvid, .mark { animation: none; }
   .reveal { opacity: 1; transform: none; transition: none; }
   html { scroll-behavior: auto; }
+}
+
+/* ---------- landing ---------- */
+.landing { overflow: hidden; }
+
+.landing .hero {
+  height: 100svh;
+  min-height: 0;
+}
+
+.rule {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 6;
+  margin: 0;
+  padding: 26px 24px 30px;
+  pointer-events: none;
+}
+
+.rule-line {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(233,234,229,0.45);
+  animation: riseIn 1.4s cubic-bezier(.2,.7,.3,1) 0.75s both;
+}
+
+.rule-line a {
+  pointer-events: auto;
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+.rule-line a:hover { color: #F1F2ED; }
+
+.rule-line .sep { color: rgba(233,234,229,0.28); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rule-line { animation: none; }
+}
+
+@media (max-width: 520px) {
+  .rule { padding: 20px 16px 24px; }
+  .rule-line { font-size: 10px; gap: 8px 10px; letter-spacing: 0.14em; }
+  /* the email takes its own line rather than wrapping after a dangling slash */
+  .rule-line .sep:last-of-type { display: none; }
+  .rule-line a[href^="mailto"] { flex-basis: 100%; text-align: center; }
 }
 
 /* ---------- wordmark (subpages) ---------- */
@@ -392,7 +427,6 @@ footer { margin-top: 170px; }
   .nav .logo { font-size: 13px; }
   .nav .menu { gap: 16px; }
   .nav .cta { padding: 7px 7px 7px 11px; }
-  .hero-copy { font-size: 15px; }
   .wordmark { padding-top: 110px; }
   main { padding-top: 64px; }
   h2 { font-size: 25px; margin-top: 56px; }
