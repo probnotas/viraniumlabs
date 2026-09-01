@@ -4,23 +4,29 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Viranium Labs</title>
-<link rel="stylesheet" href="style.css?v=14">
-<script src="script.js?v=14" defer></script>
+<link rel="stylesheet" href="style.css?v=15">
+<script src="script.js?v=15" defer></script>
 </head>
 <body class="landing">
 
 <section class="hero">
-  <video class="bgvid" src="assets/hero.mp4" autoplay muted loop playsinline aria-hidden="true"></video>
+  <video class="bgvid"
+         poster="assets/hero-poster.jpg"
+         autoplay muted loop playsinline webkit-playsinline
+         preload="auto" disablepictureinpicture disableremoteplayback
+         tabindex="-1" aria-hidden="true">
+    <source src="assets/hero.mp4" type="video/mp4">
+  </video>
 
   <div class="mark">
     <img src="assets/logo.png" alt="Viranium Labs">
   </div>
+
+  <a class="hero-cta" href="notes.html">Research</a>
 </section>
 
 <footer class="rule">
   <nav class="rule-line">
-    <a href="notes.html">Research</a>
-    <span class="sep">/</span>
     <span>&copy; 2026 Viranium Labs</span>
     <span class="sep">/</span>
     <a href="mailto:viranium.labs@gmail.com">viranium.labs@gmail.com</a>

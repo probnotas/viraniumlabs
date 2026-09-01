@@ -66,6 +66,7 @@ body {
   flex-direction: column;
   justify-content: center;
   background: #151715;
+  isolation: isolate;
 }
 
 .bgvid {
@@ -74,6 +75,9 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center;
+  background: #151715;
+  pointer-events: none;
   filter: saturate(0.75) contrast(1.05) brightness(0.62);
   animation: slowzoom 32s ease-in-out infinite alternate;
 }
@@ -109,6 +113,7 @@ body {
   width: clamp(190px, 25vw, 400px);
   margin: 0 auto;
   line-height: 0;
+  mix-blend-mode: difference;
   animation: riseIn 1.4s cubic-bezier(.2,.7,.3,1) 0.2s both;
   will-change: transform, opacity;
 }
@@ -117,6 +122,34 @@ body {
   display: block;
   width: 100%;
   height: auto;
+}
+
+.hero-cta {
+  position: relative;
+  z-index: 3;
+  align-self: center;
+  margin-top: clamp(38px, 5vw, 62px);
+  padding: 14px 30px;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #E9EAE5;
+  text-decoration: none;
+  border: 1px solid rgba(233,234,229,0.38);
+  background: rgba(11,12,11,0.18);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  transition: border-color 0.35s ease, background 0.35s ease, color 0.35s ease;
+  animation: riseIn 1.4s cubic-bezier(.2,.7,.3,1) 0.55s both;
+}
+
+.hero-cta:hover,
+.hero-cta:focus-visible {
+  border-color: #F1F2ED;
+  background: rgba(241,242,237,0.12);
+  color: #FFFFFF;
 }
 
 @keyframes riseIn {
@@ -133,7 +166,7 @@ body {
 .reveal.in { opacity: 1; transform: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .bgvid, .mark { animation: none; }
+  .bgvid, .mark, .hero-cta { animation: none; }
   .reveal { opacity: 1; transform: none; transition: none; }
   html { scroll-behavior: auto; }
 }
@@ -185,6 +218,7 @@ body {
 }
 
 @media (max-width: 520px) {
+  .hero-cta { margin-top: 34px; padding: 13px 24px; font-size: 10px; letter-spacing: 0.15em; }
   .rule { padding: 20px 16px 24px; }
   .rule-line { font-size: 10px; gap: 8px 10px; letter-spacing: 0.14em; }
   /* the email takes its own line rather than wrapping after a dangling slash */
