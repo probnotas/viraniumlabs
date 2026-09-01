@@ -327,26 +327,55 @@ a.inline:hover { text-decoration-color: rgba(255,255,255,0.9); }
   margin-bottom: 34px;
 }
 
-.entry {
+/* each report is one clickable row: the whole block is the target, and the
+   cue below it is always visible so the row reads as tappable without a
+   hover state to reveal it */
+a.entry {
+  display: block;
   padding: 30px 0;
   border-top: 1px solid rgba(255,255,255,0.12);
-}
-.entry:last-child { border-bottom: 1px solid rgba(255,255,255,0.12); }
-
-.entry h3 { margin: 0 0 10px; }
-
-.entry-link {
   color: inherit;
   text-decoration: none;
+  transition: border-color 0.35s ease;
+}
+a.entry:last-of-type { border-bottom: 1px solid rgba(255,255,255,0.12); }
+a.entry:hover, a.entry:focus-visible { border-color: rgba(255,255,255,0.34); }
+
+a.entry h3 { margin: 0 0 10px; color: #F1F2ED; }
+
+/* the rule sits on an inline span so it tracks the title's own width and
+   follows it across a wrap, rather than running the full column like a divider */
+a.entry h3 span {
   background-image: linear-gradient(currentColor, currentColor);
   background-repeat: no-repeat;
   background-position: 0 100%;
-  background-size: 0 1px;
+  background-size: 100% 1px;
+  padding-bottom: 3px;
   transition: background-size 0.4s cubic-bezier(.2,.7,.3,1);
 }
-.entry-link:hover { background-size: 100% 1px; }
+a.entry:hover h3 span, a.entry:focus-visible h3 span { background-size: 100% 2px; }
 
-.entry p { margin-bottom: 0; color: #A9ABA5; }
+a.entry p { margin-bottom: 0; color: #A9ABA5; }
+
+.entry-go {
+  display: inline-block;
+  margin-top: 18px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #91938D;
+  transition: color 0.3s ease;
+}
+
+.entry-go::after {
+  content: ' \2192';
+  display: inline-block;
+  transition: transform 0.35s cubic-bezier(.2,.7,.3,1);
+}
+
+a.entry:hover .entry-go, a.entry:focus-visible .entry-go { color: #F1F2ED; }
+a.entry:hover .entry-go::after { transform: translateX(5px); }
 
 /* ---------- footer band ---------- */
 footer { margin-top: 170px; }
