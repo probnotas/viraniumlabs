@@ -635,6 +635,14 @@ footer { margin-top: 170px; }
 }
 .paper .callout p:last-child { margin-bottom: 0; }
 
+/* a callout that has to carry more weight than the rest -- the standing
+   caveat on a result, rather than an aside beside it */
+.paper .callout.strong {
+  border-left-width: 3px;
+  background: var(--surface-2);
+  margin-bottom: 30px;
+}
+
 .paper .limitation {
   display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 12px;
   padding: 13px 0; border-top: 1px solid var(--rule-soft);
@@ -660,12 +668,51 @@ footer { margin-top: 170px; }
   padding: 10px 8px 4px; overflow-x: auto;
 }
 .paper .chart-box svg { display: block; width: 100%; min-width: 520px; height: auto; }
+
+.paper .plate-box {
+  border: 1px solid var(--rule);
+  background: #FFFFFF;
+  padding: 14px;
+}
+.paper .plate-box img { display: block; width: 100%; height: auto; }
 .paper figure.chart figcaption { padding-top: 10px; }
 .paper .diagram-box {
   border: 1px solid var(--rule); background: var(--surface);
   padding: 18px 14px 10px; overflow-x: auto;
 }
 .paper .diagram-box svg { display: block; width: 100%; min-width: 540px; height: auto; }
+
+.paper ul.refs { list-style: none; padding-left: 0; margin: 0; }
+.paper ul.refs li {
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  padding-left: 24px;
+  text-indent: -24px;        /* hangs the continuation under the author */
+  margin-bottom: 13px;
+}
+.paper ul.refs li:last-child { margin-bottom: 0; }
+
+/* series footer: the three reports, with the current one unlinked */
+.paper .series-label {
+  display: block;
+  font-size: 10.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+.paper ol.series { list-style: none; padding-left: 0; margin: 0; }
+.paper ol.series li {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+.paper ol.series li:last-child { margin-bottom: 0; }
+.paper ol.series .rung { flex: none; width: 52px; color: var(--ink-3); }
+.paper ol.series .current { color: var(--ink-3); }
+.paper ol.series .current em { font-style: italic; }
 
 .paper .paper-foot {
   margin-top: 54px; padding-top: 20px; border-top: 1px solid var(--rule);

@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Notes — EPI Labs</title>
-<link rel="stylesheet" href="style.css?v=18">
-<script src="script.js?v=18" defer></script>
+<link rel="stylesheet" href="style.css?v=19">
+<script src="script.js?v=19" defer></script>
 </head>
 <body>
 
@@ -25,6 +25,13 @@
   <p>Working notes from the lab. Each entry corresponds to one rung of the ladder we are climbing, and each rung is a single question that can be answered no.</p>
 
   <p class="lede">EPI Labs is a research lab betting against data. We study how little experience a robot needs to learn a predictive model of its own body &mdash; and how fast it can repair that model when the body wears, slips, or breaks.</p>
+
+  <a class="entry" href="surprise-has-a-signature.html">
+    <div class="meta">Rung 3 &middot; Technical report &middot; September 2026</div>
+    <h3><span>Surprise Has a Signature</span></h3>
+    <p>Before a self-model adapts, it has to decide whether its own body changed or the world briefly acted on it. We freeze a learned forward model, balance Pendulum-v1 with CEM, and at four seconds either lengthen the pendulum permanently or apply a 1 N&middot;m torque for a quarter of a second. The brief push produces the larger spike &mdash; 0.164 against 0.092 &mdash; so magnitude does not separate the two. Persistence does: three seconds on, the body change is still at 5.71&times; its pre-onset error against 1.06&times; for the push. One episode per condition at one setting, so this is a direction result rather than a classifier, and it reports no false-positive rate.</p>
+    <span class="entry-go">Read the report</span>
+  </a>
 
   <a class="entry" href="wrong-model-worse-than-none.html">
     <div class="meta">Rung 2 &middot; Technical report &middot; August 2026</div>

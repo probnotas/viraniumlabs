@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Surprise Has a Signature &mdash; EPI Labs</title>
+<meta name="description" content="A single qualitative demonstration that the time course of prediction error, not its size, separates a change in a robot's own body from a brief external push. Rung 3 of EPI Labs' self model research.">
+<link rel="stylesheet" href="style.css?v=19">
+<script src="script.js?v=19" defer></script>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="home" href="index.html">Home</a>
+  <a href="notes.html">Research</a>
+  <a href="mailto:viranium.labs@gmail.com">Contact</a>
+</nav>
+
+<article class="paper">
+
+<a class="back" href="notes.html">&larr; Research</a>
+
+<header class="mast">
+  <p class="eyebrow">Technical Report &middot; Self Model Research &middot; Rung 3</p>
+  <h1>Surprise Has a Signature: Telling Body Change from World Event</h1>
+  <p class="subtitle">A single qualitative demonstration that the time course of prediction error, not its size, separates &ldquo;my body changed&rdquo; from &ldquo;the world pushed me&rdquo;</p>
+  <div class="byline">
+    <span>Pendulum-v1</span><span>Surprise attribution</span><span>September 30, 2026</span><span>Armaan Sharma</span>
+  </div>
+</header>
+
+<div class="abstract">
+  <h2>Abstract</h2>
+  <p>A self-model that adapts online has to decide, every time its predictions fail, whether its own body changed (and it should adapt) or the world briefly acted on it (and it should not). We test whether the one-step prediction error of a frozen learned forward model carries enough information to make that call. A CEM controller balances Pendulum-v1 using the model. At t = 4 s we either permanently lengthen the pendulum by 50% or apply a 1 N&middot;m external torque, invisible to the model, for 0.25 s. Both events raise prediction error at onset, and the brief push produces the larger spike (peak raw error 0.164, against 0.092 for the body change), so magnitude alone does not separate them. What separates them is persistence. After the push ends, raw error is back below the pre-onset threshold on the very next step. After the body change, error is still 5.71&times; its pre-onset level three seconds later, against 1.06&times; for the push. This is one episode per condition at one parameter setting. It is a direction result, not a classifier, and it reports no false-positive rate.</p>
+</div>
+
+<div class="callout strong">
+  <span class="lbl">Status of this result</span>
+  <p>Read this as evidence that a signal exists, not as a solved problem. Everything here comes from one seed, one size of body change and one size of push, inspected by eye and summarised with two hand-defined features. Section 4 sets out what is missing before this could support a claim about attribution in general.</p>
+</div>
+
+<section>
+  <h2><span class="num">1</span>Motivation</h2>
+  <p>The previous report in this series established that a learned forward model registers a change in its own body as a rise in one-step prediction error, and that fine-tuning on post-damage transitions partly restores control. It treated the rise in error as unambiguous: if the model is surprised, the body changed.</p>
+  <p>That assumption does not hold outside a controlled experiment. A robot's predictions also fail when something outside it acts on it: a push, a collision, an unmodelled load that comes and goes. If the self-model treats every surprise as evidence about its own body, it will fine-tune toward dynamics that only existed for a quarter of a second, then fine-tune back. In the meantime it plans against a model that is wrong about the body it actually has. Report 2 showed that a planner committed to a wrong model degrades far more than a reactive policy does. A self-model that rewrites itself in response to every transient makes that outcome routine.</p>
+  <p>So online adaptation needs a gate in front of it. Before deciding <em>how</em> to adapt, the system has to decide <em>whether</em> the surprise was about itself. We call this attribution, and we treat it as a precondition for safe online adaptation rather than a refinement of it. This report asks the narrowest version of the question: in a setting where we control exactly what happened, does the error signal the self-model already produces carry the information needed to tell the two cases apart?</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>Setup</h2>
+
+  <h3>System under test</h3>
+  <p>The forward model and planner follow the earlier reports. An MLP (4 &rarr; 64 &rarr; 64 &rarr; 3, ReLU) takes <code>[cos &theta;, sin &theta;, &theta;&#775;, u]</code> and predicts the change in state. It is trained with MSE (Adam, lr 10&#8315;&sup3;, 1000 full-batch epochs) on 2000 random-action transitions from the stock, healthy Pendulum-v1, then <strong>frozen</strong>. It is never updated during an episode, because the object of study is the surprise of a fixed self-model, not its adaptation. A CEM planner (20-step horizon, 5 iterations, 100 candidates, 10 elites) uses the same model to choose torques and re-plans every step.</p>
+  <p>The task is balance-hold rather than swing-up. Each episode starts within &plusmn;0.2 rad of upright and lasts 240 steps (12 s at dt = 0.05 s). Holding near upright gives a flat, low baseline error, so a change in the error is easy to read. Swing-up adds its own transient error bumps to every condition.</p>
+
+  <h3>The three conditions</h3>
+  <p>At step 80 (t = 4 s), one of three things happens:</p>
+  <ul>
+    <li><strong>Baseline.</strong> Nothing. This is the model's error floor on the trajectory the controller actually follows.</li>
+    <li><strong>Body change.</strong> The pendulum's length is multiplied by 1.5 and stays that way. This is done by overwriting the length attribute that Pendulum-v1's own step function reads, so the stock physics code keeps running on a different body. The model is not told.</li>
+    <li><strong>World event.</strong> An external torque of 1 N&middot;m acts for 5 steps (0.25 s) and is then removed. The body is untouched throughout.</li>
+  </ul>
+
+  <p>The two disturbances enter through different channels:</p>
+
+  <div class="repro">&theta;&#776; = 3g/(2l)&middot;sin(&theta;) + 3/(m&middot;l&sup2;)&middot;(u + &tau;_ext)<br>
+<span class="k"># body change: l &rarr; 1.5&middot;l   (permanent)</span><br>
+<span class="k"># world event: &tau;_ext = 1 N&middot;m for 0.25 s, else 0</span></div>
+
+  <p style="margin-top:15px;">The external torque is added after the controller's torque has been clipped and never appears in the action the model is given, so the model has no way to anticipate it. During the push the environment evaluates Pendulum-v1's equation of motion with that one extra term. At all other times it calls the stock step function. We verified that this re-implementation reproduces stock Pendulum-v1 exactly (maximum difference 0 over 500 steps) when &tau;_ext = 0. Length was chosen over mass deliberately. Mass enters only the torque term, so a mass change is invisible while the controller applies little torque. Length enters both terms and is visible even when the pendulum is near rest.</p>
+
+  <p>All three conditions use the same seed for the start state and for the planner's random samples, so the three episodes are identical up to step 80. Any difference after that is caused by the disturbance.</p>
+
+  <h3>The surprise signal</h3>
+  <p>At every step the model is given the true current state and the action about to be executed, and its prediction is compared with what the environment then returns:</p>
+
+  <div class="repro">e_t = &Vert; s_(t+1) &minus; f(s_t, a_t) &Vert;&#8322;      <span class="k"># over [cos &theta;, sin &theta;, &theta;&#775;]</span></div>
+
+  <p style="margin-top:15px;">Because the model always starts from the true state, errors do not compound. Each e_t scores a single transition. We plot e_t raw and as a 10-step (0.5 s) trailing mean. The mean is trailing rather than centred, so the smoothed value at any step depends only on the past, which is what an online detector would see.</p>
+
+  <p>Two summary features are computed per episode, each relative to that episode's own pre-onset window:</p>
+  <ul>
+    <li><strong>Before vs after:</strong> mean error in the 20 steps after onset divided by the mean over the 40 steps before it.</li>
+    <li><strong>Persistence:</strong> mean error in a 20-step window starting 60 steps (3 s) after onset, divided by the same pre-onset mean.</li>
+  </ul>
+
+  <p>An episode counts as still elevated if the late-window mean exceeds the pre-onset mean by more than four pre-onset standard deviations. Here that threshold is 0.0311. It uses no data from after the onset.</p>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Result</h2>
+
+  <figure class="chart">
+    <div class="chart-title">Figure 1 &mdash; Surprise signatures: body change vs world event</div>
+    <div class="plate-box"><img src="/assets/surprise-signatures.png" alt="Two stacked panels of one-step prediction error against time over 12 seconds on a log scale, for baseline, body change and world event. The three traces coincide until 4 s. The world-event trace spikes highest during the shaded 0.25 s push, then returns to the baseline level. The body-change trace rises and stays elevated. The lower panel shows the same data as a 10-step trailing mean."></div>
+    <figcaption><b>Figure 1.</b> One-step prediction error of a frozen forward model while CEM balances Pendulum-v1, one episode per condition, log scale. Top: raw error per step. Bottom: 10-step (0.5 s) trailing mean. All three episodes share a seed and are identical until the dotted onset line at t = 4 s. The green band marks the 0.25 s external push; the grey band (bottom) is the late window used for the persistence feature. The world event (dashed) spikes highest and then falls back to the baseline level; the body change (length &times;1.5) rises and stays elevated. The late climb of the body-change trace after about t = 10 s is the pendulum tipping past the angle its motor can recover from (Section 4).</figcaption>
+  </figure>
+
+  <p>Before the onset the three traces lie on top of one another, as the shared seed requires. At t = 4 s both disturbances raise the error.</p>
+
+  <p><strong>World event.</strong> While the push is active, the error jumps to the highest value in any condition, 0.164 (about 15&times; the pre-onset mean of 0.0113). Once the push is removed the error falls back immediately. On the first step after the push ends (t = 4.25 s) the raw error is already below the pre-onset threshold and stays there, and the 10-step trailing mean rejoins the baseline trace within 0.45 s. This is what the setup predicts. The push displaced the pendulum but did not change its physics, so once it stops, the model's description of the body is correct again. The controller recovers from the displaced state, and the model predicts that recovery well because its random-action training data covered states away from upright.</p>
+
+  <p><strong>Body change.</strong> The error rises to a smaller peak, 0.092, and does not come back. For the rest of the episode it sits well above the baseline trace, because every subsequent transition is predicted with an equation of motion the body no longer obeys.</p>
+
+  <div class="callout">
+    <span class="lbl">The point of the figure</span>
+    <p>At onset, the brief push produces a larger spike than the body change (0.164 against 0.092). A rule based on magnitude (&ldquo;large surprise means my body changed&rdquo;) would therefore get this case backwards. The two events differ in their time signature. A transient cause produces a transient error; a persistent cause produces a persistent one. The trailing-mean panel makes the separation easiest to see: by the late window the world-event trace has merged with the baseline while the body-change trace remains clearly above both.</p>
+  </div>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>Condition</th><th>Pre-onset mean</th><th>Peak after onset</th><th>Post / pre</th><th>Late / pre</th><th>Still elevated</th></tr></thead>
+      <tbody>
+        <tr><td>Baseline</td><td>0.0113</td><td>0.0174</td><td>0.95</td><td>0.91</td><td>No</td></tr>
+        <tr><td>Body change (l &times;1.5)</td><td>0.0113</td><td>0.0922</td><td>4.53</td><td>5.71</td><td>Yes</td></tr>
+        <tr><td>World event (1 N&middot;m, 0.25 s)</td><td>0.0113</td><td>0.164</td><td>4.09</td><td>1.06</td><td>No</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 1.</b> Summary features for the three episodes in Figure 1. Pre-onset means are identical because the episodes are identical before onset. Post / pre: mean error over the 20 steps after onset divided by the mean over the 40 steps before it. Late / pre: mean error over a 20-step window starting 3 s after onset, divided by the same pre-onset mean. Still elevated: late-window mean above the pre-onset mean plus four pre-onset standard deviations (0.0311). Values are from <code>results/summary_features.csv</code>.</figcaption>
+  </figure>
+
+  <p>The &ldquo;before vs after&rdquo; feature responds to both disturbances (4.53&times; and 4.09&times;), so it says that something happened but not what. Only the persistence feature distinguishes them (5.71&times; against 1.06&times;), and in this episode it does so with no tuning on disturbed data. That is the whole of the result: a signal exists, it has the predicted shape, and its shape rather than its size is what carries the attribution.</p>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Limitations</h2>
+
+  <div class="callout strong">
+    <span class="lbl">A direction result, not a solved problem</span>
+    <p>What is shown is that, in one hand-picked setting, the error a self-model already produces has a time signature that separates a permanent body change from a brief external push. What is not shown is that this separation holds across trials, disturbance sizes, disturbance types or bodies, or that it can be turned into a decision rule with a known error rate. Each item below is an open gap, not a caveat on a finished result.</p>
+  </div>
+
+  <div class="limitation"><div class="n">1</div><p><b>A single qualitative demonstration.</b> One episode per condition, one seed. The features in Table 1 summarise those three episodes and nothing else. No classifier is trained or evaluated, and no accuracy is claimed.</p></div>
+  <div class="limitation"><div class="n">2</div><p><b>One parameter setting, chosen to be easy.</b> A large, permanent body change (length &times;1.5) against a short, isolated push (1 N&middot;m for 0.25 s). A smaller body change, a longer or repeated push, or a disturbance that persists (a sustained load, wind) would sit closer to the boundary. Where that boundary is has not been measured.</p></div>
+  <div class="limitation"><div class="n">3</div><p><b>No false-positive rate and no detection-boundary sweep.</b> We report no rate at which undisturbed episodes are flagged, no rate at which pushes are misread as body changes, no latency distribution and no ROC curve. The four-sigma threshold and the 3 s lag are reasonable defaults, not tuned or validated choices.</p></div>
+  <div class="limitation"><div class="n">4</div><p><b>The body-change pendulum falls.</b> A longer pendulum needs more torque to hold at a given angle. With l = 1.5 the motor's maximum angular acceleration is 3&middot;2/(1&middot;1.5&sup2;) &asymp; 2.67 rad/s&sup2;, against gravity's 10&middot;sin &theta;, so the actuator limit of &plusmn;2 N&middot;m cannot hold the lengthened body once it drifts past roughly 0.27 rad. In this episode it crosses that angle at t &asymp; 9.4 s and is clearly falling by t &asymp; 10.1 s. The late window (7&ndash;8 s) is placed before the fall, while the pendulum is still within 0.22 rad of upright, so the persistence reading is not caused by falling. A later window would partly measure a fallen pendulum rather than a changed body.</p></div>
+  <div class="limitation"><div class="n">5</div><p><b>The norm is dominated by angular velocity.</b> cos &theta; and sin &theta; are bounded in [&minus;1, 1]; &theta;&#775; is unbounded rad/s. Both disturbances here act on angular acceleration, so this does not distort the comparison. A disturbance that acted mainly on position would be under-weighted. Per-dimension residuals are saved alongside the error series.</p></div>
+  <div class="limitation"><div class="n">6</div><p><b>A rigid pendulum in simulation.</b> One degree of freedom, no sensor noise, no contact, no unmodelled dynamics. On a compliant body, deformation under load is itself a transient change in the body. That is exactly the case where &ldquo;body&rdquo; and &ldquo;world&rdquo; are hardest to separate, and it is untested.</p></div>
+  <div class="limitation"><div class="n">7</div><p><b>Not a new idea in isolation.</b> Separating persistent changes in a system from transient external disturbances is a long-standing problem in model-based fault detection and isolation. There, residuals between a model and measurements are analysed for faults while disturbances are rejected (Chen &amp; Patton, 1999; Isermann, 2006). Robotics work on body schemas and self-modelling has studied detecting and adapting to changes in a robot's own body (Bongard, Zykov &amp; Lipson, 2006; Hoffmann et al., 2010). This report applies that reasoning to a learned forward model used for control, and does not claim the underlying idea as new.</p></div>
+  <div class="limitation"><div class="n">8</div><p><b>Parameter identity is not addressed.</b> Even when a body change is detected, this setup does not say which parameter changed. On this body some changes are not separable in principle: mass and actuator gain enter the dynamics only as a ratio, so &ldquo;heavier&rdquo; and &ldquo;weaker motor&rdquo; produce identical trajectories.</p></div>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Next steps</h2>
+  <ol>
+    <li><strong>Quantify it.</strong> Turn the persistence feature into an explicit detect-then-classify rule with a threshold calibrated on undisturbed runs only, and evaluate it over many randomised trials (start states, seeds, onset times). Report accuracy on each class, the false-positive rate on undisturbed episodes, and the time to a verdict, with uncertainty.</li>
+    <li><strong>Find the detection boundary.</strong> Sweep body-change size down until it can no longer be detected, and push strength and duration up until a push is no longer rejected. The smallest detectable body change and the largest rejectable push define the operating range, and that range is the honest headline.</li>
+    <li><strong>Test simultaneous disturbances.</strong> Apply a push and a body change together, and a push shortly after a body change. A rule that only asks &ldquo;is error still elevated?&rdquo; has no way to say that both happened. This is where a richer signal, such as the direction of the residual or a short model-refit test, may become necessary.</li>
+    <li><strong>Move to a compliant body.</strong> Repeat on a compliant joint, first in simulation and then on hardware, where load-dependent deformation blurs the line between a body that changed and a body that is momentarily being acted on.</li>
+  </ol>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Reproducibility</h2>
+  <div class="repro"><span class="k"># check the push-capable step reproduces stock Pendulum-v1 exactly</span><br>
+python env_setup.py<br><br>
+<span class="k"># train (or load) the forward model, run the three conditions, write CSVs, figure and features</span><br>
+python run_experiment.py<br><br>
+<span class="k"># redraw Figure 1 from the saved CSVs</span><br>
+python plot.py</div>
+  <p style="margin-top:16px;">All scripts are in <code>surprise_attribution/</code> of the self-model-research repository and depend only on numpy, torch, gymnasium and matplotlib. Every setting used here (onset, body-change factor, push torque and duration, feature windows, threshold) is defined in <code>config.py</code>. The trained model and the per-step error series for each condition are committed, so Figure 1 and Table 1 can be regenerated exactly.</p>
+</section>
+
+<section>
+  <h2>References</h2>
+  <ul class="refs">
+    <li>Bongard, J., Zykov, V. &amp; Lipson, H. (2006). Resilient machines through continuous self-modeling. <em>Science</em>, 314(5802), 1118&ndash;1121.</li>
+    <li>Chen, J. &amp; Patton, R. J. (1999). <em>Robust Model-Based Fault Diagnosis for Dynamic Systems.</em> Kluwer Academic Publishers.</li>
+    <li>Hoffmann, M., Marques, H. G., Hernandez Arieta, A., Sumioka, H., Lungarella, M. &amp; Pfeifer, R. (2010). Body schema in robotics: a review. <em>IEEE Transactions on Autonomous Mental Development</em>, 2(4), 304&ndash;324.</li>
+    <li>Isermann, R. (2006). <em>Fault-Diagnosis Systems: An Introduction from Fault Detection to Fault Tolerance.</em> Springer.</li>
+  </ul>
+</section>
+
+<div class="paper-foot">
+  <span class="series-label">Self Model Research</span>
+  <ol class="series">
+    <li><span class="rung">Rung 1</span><a href="planner-hides-the-model.html">The Planner Hides the Model</a></li>
+    <li><span class="rung">Rung 2</span><a href="wrong-model-worse-than-none.html">A Wrong Model Is Worse Than None</a></li>
+    <li aria-current="page"><span class="rung">Rung 3</span><span class="current">Surprise Has a Signature <em>(this report)</em></span></li>
+  </ol>
+</div>
+</article>
+
+<footer>
+  <section class="band">
+    <canvas class="band-canvas" aria-hidden="true"></canvas>
+    <div class="band-inner">
+
+      <nav class="band-links">
+        <a href="index.html">Home</a>
+        <a href="notes.html">Notes</a>
+        <a href="mailto:viranium.labs@gmail.com">Contact</a>
+      </nav>
+
+      <div class="band-foot">
+        <a class="band-logo" href="index.html"><img src="assets/logo.png" alt="EPI Labs"></a>
+        <div class="band-end">
+          <p class="band-tag">&#12302; Publish the limit, not the promise. &#12303;</p>
+          <p class="copyright">EPI Labs &copy; 2026</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</footer>
+
+</body>
+</html>
