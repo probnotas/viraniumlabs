@@ -619,6 +619,8 @@ footer { margin-top: 170px; }
 .paper tbody tr.rule-top td { border-top: 1px solid var(--rule); }
 .paper td.hi { color: var(--good); font-weight: 600; }
 .paper td.lo { color: var(--warn); }
+/* a wide table whose header labels may break, so its columns fit the page */
+.paper .tw.wrap-head thead th { white-space: normal; vertical-align: bottom; }
 .paper figcaption {
   font-family: var(--f-data); font-size: 11.5px; line-height: 1.55;
   color: var(--ink-3); padding-top: 9px;
