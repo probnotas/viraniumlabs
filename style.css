@@ -86,6 +86,16 @@ body {
   height: auto;
 }
 
+.mark .sigma {
+  display: block;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: clamp(170px, 24vw, 360px);
+  font-weight: 400;
+  line-height: 1;
+  text-align: center;
+  color: #F1F2ED;
+}
+
 .tagline {
   position: relative;
   z-index: 3;
