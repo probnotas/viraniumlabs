@@ -26,6 +26,13 @@
 
   <p class="lede">EPI Labs is a research lab betting against data. We study how little experience a robot needs to learn a predictive model of its own body &mdash; and how fast it can repair that model when the body wears, slips, or breaks.</p>
 
+  <a class="entry" href="the-margin-was-rigid.html">
+    <div class="meta">Rung 4 &middot; Technical report &middot; October 2026</div>
+    <h3><span>The Margin Was Rigid</span></h3>
+    <p>The attribution rule never mistakes a push for a body change on a rigid pendulum, but its margin is thin, and on a simulated soft, noisy joint it disappears. On the rigid Pendulum-v1 it called no push a body change (0/120), but missed 19/120 body changes when a push landed with them, and the settled scores that separate body from world are apart by only +0.0014. On a simulated compliant joint the margin is negative in every other configuration where it can be computed, false positives reach 26/120 (soft, no noise) and 52/120 (soft, low noise), and at medium noise the rule alarms on nearly every trial, undisturbed runs included. A negative result: with its rigid-tuned settings, the rule is a rigid-body result.</p>
+    <span class="entry-go">Read the report</span>
+  </a>
+
   <a class="entry" href="surprise-has-a-signature.html">
     <div class="meta">Rung 3 &middot; Technical report &middot; September 2026</div>
     <h3><span>Surprise Has a Signature</span></h3>

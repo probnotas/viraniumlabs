@@ -628,6 +628,7 @@ footer { margin-top: 170px; }
 .paper code {
   font-family: var(--f-data); font-size: .84em;
   background: var(--surface-2); padding: .1em .34em; border-radius: 2px;
+  overflow-wrap: anywhere;   /* long file paths break rather than widen a phone screen */
 }
 
 .paper figure { margin: 0 0 26px; }
@@ -646,6 +647,8 @@ footer { margin-top: 170px; }
 .paper td.lo { color: var(--warn); }
 /* a wide table whose header labels may break, so its columns fit the page */
 .paper .tw.wrap-head thead th { white-space: normal; vertical-align: bottom; }
+/* a table of prose rather than numbers: cells wrap and read left to right */
+.paper .tw.wrap-text th, .paper .tw.wrap-text td { white-space: normal; text-align: left; vertical-align: top; }
 .paper figcaption {
   font-family: var(--f-data); font-size: 11.5px; line-height: 1.55;
   color: var(--ink-3); padding-top: 9px;

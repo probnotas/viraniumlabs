@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Margin Was Rigid &mdash; EPI Labs</title>
+<meta name="description" content="Surprise attribution under simultaneous disturbances on a rigid pendulum and on a simulated compliant joint: the rule never mistakes a push for a body change when the body is rigid, but its margin is thin, and on a simulated soft, noisy joint it disappears. Rung 4 of EPI Labs' self model research.">
+<link rel="stylesheet" href="style.css?v=25">
+<script src="script.js?v=25" defer></script>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="home" href="index.html">Home</a>
+  <a href="notes.html">Research</a>
+  <a href="mailto:viranium.labs@gmail.com">Contact</a>
+</nav>
+
+<article class="paper">
+
+<a class="back" href="notes.html">&larr; Research</a>
+
+<header class="mast">
+  <p class="eyebrow">Technical Report &middot; Self Model Research &middot; Rung 4</p>
+  <h1>The Margin Was Rigid: Surprise Attribution Under Simultaneous Disturbances and a Simulated Compliant Joint</h1>
+  <p class="subtitle">The attribution rule never mistakes a push for a body change on a rigid pendulum, but its margin is thin, and on a simulated soft, noisy joint it disappears</p>
+  <div class="byline">
+    <span>Pendulum-v1</span><span>Surprise attribution</span><span>October 7, 2026</span><span>Armaan Sharma</span>
+  </div>
+</header>
+
+<div class="abstract">
+  <h2>Abstract</h2>
+  <p>A self-model that adapts online has to decide whether each surprise came from its own body or from the world. Earlier reports in this series built a rule that makes that call from the time course of one-step prediction error and tested it on one disturbance at a time. Here we stress it twice. First, a 2×2 factorial on the rigid Pendulum-v1, 120 trials per cell, delivers a body change and an external push at the same moment, unannounced. The rule never mistakes a push for a body change (0/120, 95% CI 0.0–3.1%), but it misses 19/120 body changes (15.8%, 95% CI 10.4–23.4%) when a push lands with them, all through one route: the pendulum never settles, and its error flickers below the alarm requirement. The settled scores that separate body from world are apart by only +0.0014. Second, we rerun the identical trials on a simulated compliant joint (series-elastic, hysteretic, damped, with sensor noise) at 4 stiffnesses and 3 noise levels, with a forward model retrained for each body. The margin is negative in every other configuration where it can be computed. On medium and soft joints every body change is missed even with no push, false positives reach 26/120 (soft, no noise) and 52/120 (soft, low noise), and at medium noise the rule alarms on nearly every trial, undisturbed runs included. With its rigid-tuned settings, the rule is a rigid-body result. The compliant body here is simulated, not hardware.</p>
+</div>
+
+<div class="callout strong">
+  <span class="lbl">Status of this result</span>
+  <p>This is a negative result, and it is reported as one. The rigid-body numbers are solid within their design (120 trials per cell, fixed seed, Wilson intervals). The compliant-body numbers come from a numerical model whose parameters were chosen, not measured, with one trained model and one run per configuration. They show that the rule's margin does not survive this model of compliance. They do not show how a physical joint would behave.</p>
+</div>
+
+<section>
+  <h2><span class="num">1</span>Motivation</h2>
+  <p>The rule tested here was designed and tuned one disturbance at a time, on a rigid pendulum with perfect sensing: a body change alone, or a push alone. Two assumptions behind that design had not been tested.</p>
+  <p>The first is that disturbances arrive separately. A robot that is loaded with a weight while being bumped, or that is damaged in a collision, gets a body change and a world event at the same instant. If the push hides the body change, the rule says &ldquo;world&rdquo;, the self-model does not adapt, and the robot keeps planning against a body it no longer has.</p>
+  <p>The second is that the body is rigid and the sensors are clean. A real actuator has elasticity between motor and link, hysteresis, friction and noisy encoders. All of these raise the prediction error the self-model sees while nothing is wrong, and the rule's body/world call rests on a margin between &ldquo;normal&rdquo; error and &ldquo;changed&rdquo; error.</p>
+  <p>This report tests both assumptions with the rule frozen exactly as it was. It answers how often the rule fails when both disturbances overlap, why it fails, and whether its margin survives a softer, noisier body, before any hardware is built.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>The rule under test</h2>
+  <p><code>alarm_classifier.decide</code>, used unchanged in both experiments. It returns one of three verdicts:</p>
+  <ol>
+    <li><strong>Settled path.</strong> It waits for the pendulum to settle: at least 0.5 s continuously near upright and slow, starting 1 s or more after the onset. It averages the prediction error over 2 s of settled steps. If that average is above the <strong>body/world threshold</strong>, the verdict is <strong>body</strong>; otherwise it is <strong>world</strong>.</li>
+    <li><strong>Persistent path.</strong> If the pendulum never settles within 10 s, it looks at the 1 s block-mean errors from 5 to 10 s. If at least 80% of them are above the <strong>alarm threshold</strong>, the verdict is <strong>alarm</strong>.</li>
+    <li><strong>Decayed path.</strong> Otherwise the verdict is <strong>world</strong>.</li>
+  </ol>
+
+  <p>How the thresholds are set:</p>
+  <ul>
+    <li><strong>Body/world threshold:</strong> mean + 4 standard deviations of the settled score on <strong>50 separate undisturbed episodes</strong>, recalibrated for each body.</li>
+    <li><strong>Alarm threshold:</strong> <strong>0.04042</strong>, frozen. It was chosen on the rigid dev set (<code>results_alarm/chosen_alarm.json</code>).</li>
+  </ul>
+
+  <p>How verdicts are scored:</p>
+  <ul>
+    <li>The rule has no &ldquo;none&rdquo; output. <strong>&ldquo;world&rdquo; means &ldquo;no persistent change, don't adapt&rdquo;</strong>, which is the correct verdict for both a push and for nothing happening.</li>
+    <li>For a body change, <strong>body or alarm</strong> counts as detected, and <strong>world</strong> counts as missed.</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Experiment 1: simultaneous disturbances on a rigid pendulum</h2>
+
+  <h3>What it tested</h3>
+  <p>The question: can the rule tell a body change from a push when <strong>both happen at the same moment, unannounced</strong>? The body is the rigid Gymnasium <code>Pendulum-v1</code>. The design is a 2×2 factorial:</p>
+
+  <figure>
+    <div class="tw wrap-text"><table>
+      <thead><tr><th>factor</th><th>levels</th></tr></thead>
+      <tbody>
+        <tr><td>body change</td><td>none · mass ×U[1.3, 1.7] · length ×U[1.2, 1.5] (half the body trials each)</td></tr>
+        <tr><td>world push</td><td>none · |torque| ∈ {1, 2, 4} N·m (random sign) × duration {short 0.2 s, medium 0.5 s}</td></tr>
+        <tr><td>overlap</td><td>push onset = body onset + U[−0.25, +0.25] s</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 1.</b></figcaption>
+  </figure>
+
+  <p>The design settings come from <code>factorial_config.py</code> (they are not repeated in the result files).</p>
+  <p><strong>120 trials per cell.</strong> Inside the push cells, the 6 magnitude × duration combinations are balanced at 20 each. <strong>50 separate calibration episodes.</strong> The CSV has 530 rows: 4 × 120 trials plus 50 calibration episodes.</p>
+
+  <h3>Results</h3>
+  <p><strong>Thresholds:</strong> body/world 0.01377 (from 50 undisturbed episodes, all of which settled); alarm 0.04042 (frozen).</p>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>ground truth</th><th>→ body</th><th>→ world</th><th>→ alarm</th><th>n</th></tr></thead>
+      <tbody>
+        <tr><td>neither</td><td>0</td><td>120</td><td>0</td><td>120</td></tr>
+        <tr><td>body only</td><td>117</td><td>0</td><td>3</td><td>120</td></tr>
+        <tr><td>world only</td><td>0</td><td>120</td><td>0</td><td>120</td></tr>
+        <tr><td>body + world</td><td>70</td><td><b>19</b></td><td>31</td><td>120</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 2.</b></figcaption>
+  </figure>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>rate</th><th>value</th></tr></thead>
+      <tbody>
+        <tr><td>overall misattribution</td><td>19/480 = <b>4.0%</b> (95% CI 2.5–6.1%)</td></tr>
+        <tr><td><b>false positive</b> (world only → body or alarm)</td><td><b>0/120 = 0.0%</b> (95% CI 0.0–3.1%); 0 body, 0 alarm</td></tr>
+        <tr><td><b>masking</b> (body + world → world)</td><td><b>19/120 = 15.8%</b> (95% CI 10.4–23.4%)</td></tr>
+        <tr><td>body only → world (reference)</td><td>0/120 = 0.0%</td></tr>
+        <tr><td>neither → body/alarm (reference)</td><td>0/120 = 0.0%</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 3.</b></figcaption>
+  </figure>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>push</th><th>false positive</th><th>masking</th></tr></thead>
+      <tbody>
+        <tr><td>1 N·m, short</td><td>0/20</td><td>0/20</td></tr>
+        <tr><td>1 N·m, medium</td><td>0/20</td><td>8/20 = 40%</td></tr>
+        <tr><td>2 N·m, short</td><td>0/20</td><td>1/20 = 5%</td></tr>
+        <tr><td>2 N·m, medium</td><td>0/20</td><td>10/20 = 50%</td></tr>
+        <tr><td>4 N·m, short</td><td>0/20</td><td>0/20</td></tr>
+        <tr><td>4 N·m, medium</td><td>0/20</td><td>0/20</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 4.</b> By push magnitude and duration.</figcaption>
+  </figure>
+
+  <p>Masking does <strong>not</strong> grow with push size. From <code>trials.csv</code>, the body+world verdict paths at 4 N·m were: <strong>short pushes:</strong> all 20 went to <em>alarm</em> via the persistent path; <strong>medium pushes:</strong> all 20 went to <em>body</em> via the settled path.</p>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>group</th><th>settled</th><th>settled score min / median / max</th></tr></thead>
+      <tbody>
+        <tr><td>body present</td><td>187/240</td><td>0.0143 / 0.0313 / 0.0986</td></tr>
+        <tr><td>body absent</td><td>239/240</td><td>0.0080 / 0.0107 / 0.0129</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 5.</b> Margin: the values the rule actually used.</figcaption>
+  </figure>
+
+  <ul>
+    <li><strong>Settled-score gap</strong> (lowest body-present minus highest body-absent): <strong>+0.0014</strong>. That is clean separation, but narrow, with the threshold at 0.0138.</li>
+    <li><strong>Never settled, body present (53 trials):</strong> the fraction of late blocks above the alarm threshold ranged 0.00–1.00 (median 1.00), and late block medians ranged 0.0250–0.0849.</li>
+    <li><strong>Never settled, body absent (1 trial):</strong> fraction 0.00, block median 0.0236.</li>
+  </ul>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>cell</th><th>settled</th><th>persistent</th><th>decayed</th></tr></thead>
+      <tbody>
+        <tr><td>neither</td><td>120</td><td>0</td><td>0</td></tr>
+        <tr><td>body only</td><td>117</td><td>3</td><td>0</td></tr>
+        <tr><td>world only</td><td>119</td><td>0</td><td>1</td></tr>
+        <tr><td>body + world</td><td>70</td><td>31</td><td>19</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 6.</b> Verdict paths per cell.</figcaption>
+  </figure>
+
+  <h3>Mechanism behind the masking</h3>
+  <p>From <code>results_factorial/trials.csv</code>:</p>
+  <ul>
+    <li><strong>All 19 masked trials</strong> took the <em>decayed</em> path: they never settled, and their error was not persistent enough to alarm.</li>
+    <li><strong>18 of the 19 are length changes</strong> (1 is a mass change).</li>
+    <li><strong>Their late error sits around the alarm threshold.</strong> The fraction of late 1 s blocks above it was 0.0, 0.2 ×8, 0.4 ×6 and 0.6 ×4, against the 0.8 required. Late block medians were 0.0250–0.0487, against an alarm threshold of 0.0404.</li>
+  </ul>
+  <p>So the rule fails here because the error is raised but flickers around the alarm line, and it falls through the &ldquo;decayed → world&rdquo; branch.</p>
+
+  <div class="callout">
+    <span class="lbl">Not measured here</span>
+    <p><strong>Not in these files:</strong> <em>why</em> those pendulums never settled. The factorial CSV does not log the pendulum's angle. In the earlier overlap experiment (<code>results_overlap/</code>), an ad-hoc analysis of <code>results_overlap/traces.npz</code> found the masked pendulums lying fallen for the whole 5–10 s window, while their body-only and push-only twins stayed up. That analysis was not saved as a summary number. It is consistent with this experiment, but it was not re-measured here.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Experiment 2: the same factorial on a simulated compliant joint</h2>
+
+  <div class="callout strong">
+    <span class="lbl">Simulated, not hardware</span>
+    <p>The compliant joint in this section is a numerical model with chosen parameters, not a physical device. Nothing in this report has been run on hardware.</p>
+  </div>
+
+  <h3>What it tested</h3>
+  <p>The question: does the separation survive when the body is <strong>compliant and noisy</strong> instead of rigid and clean? The same factorial (same master seed, same draws, same start states) was run on a <strong>simulated</strong> compliant pendulum (<code>compliant_env.py</code>):</p>
+  <ul>
+    <li><strong>Series-elastic joint.</strong> The commanded torque drives a motor (inertia <code>J_MOTOR</code> 0.05, friction <code>B_MOTOR</code> 0.5). The motor reaches the link only through a spring of stiffness k, with a parallel damper at <code>SPRING_ZETA</code> 0.3 of critical damping.</li>
+    <li><strong>Hysteresis.</strong> The spring is ±30% (<code>HYST</code> 0.3) stiffer while loading than while unloading.</li>
+    <li><strong>Joint damping.</strong> <code>B_JOINT</code> 0.3.</li>
+    <li><strong>Sensor noise.</strong> Gaussian noise on the observed angle and angular velocity.</li>
+    <li><strong>Integration.</strong> 10 substeps per 0.05 s step (<code>N_SUBSTEPS</code>).</li>
+    <li><strong>Same interface.</strong> The robot observes only the link's [cos θ, sin θ, θ̇]; the motor and spring state are hidden.</li>
+  </ul>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>stiffness</th><th>k (N·m/rad)</th><th></th><th>noise</th><th>σ angle (rad)</th><th>σ velocity (rad/s)</th></tr></thead>
+      <tbody>
+        <tr><td>rigid</td><td>(stock Pendulum-v1)</td><td></td><td>none</td><td>0</td><td>0</td></tr>
+        <tr><td>stiff</td><td>200</td><td></td><td>low</td><td>0.002</td><td>0.02</td></tr>
+        <tr><td>medium</td><td>30</td><td></td><td>medium</td><td>0.01</td><td>0.1</td></tr>
+        <tr><td>soft</td><td>4</td><td></td><td></td><td></td><td></td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 7.</b> Grid (stiffness from <code>summary.json</code>; noise levels from <code>compliant_config.py</code> and <code>summary.json</code>).</figcaption>
+  </figure>
+
+  <p><strong>Procedure for each of the 12 configurations:</strong></p>
+  <ol>
+    <li>A forward model is <strong>retrained</strong> on 2000 random-action transitions from that body, as sensed (with noise).</li>
+    <li>Rigid with no noise uses the original model and reproduces Experiment 1 exactly: same confusion matrix, gap +0.0014.</li>
+    <li>The rule sees the <strong>observed (noisy)</strong> angle and velocity, not the simulator's true state.</li>
+    <li>The body/world threshold is recalibrated per configuration (50 separate undisturbed episodes); the alarm threshold stays frozen at 0.04042.</li>
+  </ol>
+
+  <h3>Results</h3>
+  <p><strong>Definitions for the table:</strong></p>
+  <ul>
+    <li><strong>Held-out</strong>: the model's one-step error on 1000 fresh random-action transitions from that body.</li>
+    <li><strong>Normal error</strong>: the mean settled score of the 50 undisturbed calibration episodes, i.e. the error while balancing with nothing happening.</li>
+    <li><strong>FP</strong>: world-only trials called body or alarm, out of 120, with the split (body / alarm).</li>
+    <li><strong>Mask</strong>: body+world trials called world, out of 120.</li>
+    <li><strong>Missed (no push)</strong>: body-only trials called world, out of 120.</li>
+    <li><strong>Flagged undisturbed</strong>: &ldquo;neither&rdquo; trials called body or alarm, out of 120.</li>
+  </ul>
+
+  <figure>
+    <div class="tw wrap-head"><table>
+      <thead><tr><th>config</th><th>held-out</th><th>calib settled</th><th>normal error</th><th>body/world thr</th><th>FP (body/alarm)</th><th>mask</th><th>missed (no push)</th><th>flagged undisturbed</th><th>misattribution</th><th>gap</th><th>AUC</th></tr></thead>
+      <tbody>
+        <tr><td>rigid, none</td><td>0.0162</td><td>50/50</td><td>0.0107</td><td>0.0138</td><td>0 (0/0)</td><td>19</td><td>0</td><td>0</td><td>4.0%</td><td><b>+0.0014</b></td><td><b>1.000</b></td></tr>
+        <tr><td>rigid, low</td><td>0.0311</td><td>50/50</td><td>0.0248</td><td>0.0354</td><td>0 (0/0)</td><td>67</td><td>46</td><td>1</td><td>23.8%</td><td>−0.0167</td><td>0.930</td></tr>
+        <tr><td>rigid, medium</td><td>0.1265</td><td>50/50</td><td>0.1245</td><td>0.1867</td><td>15 (0/15)</td><td>72</td><td>120</td><td>1</td><td>43.3%</td><td>−0.1084</td><td><b>0.291</b></td></tr>
+        <tr><td>stiff, none</td><td>0.0074</td><td>50/50</td><td>0.0506</td><td>0.0568</td><td>3 (3/0)</td><td>84</td><td>29</td><td>0</td><td>24.2%</td><td>−0.0126</td><td>0.980</td></tr>
+        <tr><td>stiff, low</td><td>0.0263</td><td>50/50</td><td>0.0636</td><td>0.0830</td><td>1 (1/0)</td><td>94</td><td>77</td><td>2</td><td>36.2%</td><td>−0.0541</td><td>0.830</td></tr>
+        <tr><td>stiff, medium</td><td>0.1220</td><td><b>0/50</b></td><td>n/a</td><td>n/a</td><td>116 (0/116)</td><td>3</td><td>3</td><td><b>119</b></td><td>50.2%</td><td>−0.0241</td><td>0.767</td></tr>
+        <tr><td>medium, none</td><td>0.0786</td><td>50/50</td><td>0.0672</td><td>0.0919</td><td>5 (1/4)</td><td>117</td><td>120</td><td>0</td><td>50.4%</td><td>−0.0271</td><td>0.955</td></tr>
+        <tr><td>medium, low</td><td>0.0824</td><td>50/50</td><td>0.0482</td><td>0.0631</td><td>18 (2/16)</td><td>120</td><td>120</td><td>0</td><td>53.8%</td><td>−0.0281</td><td><b>0.373</b></td></tr>
+        <tr><td>medium, medium</td><td>0.1462</td><td><b>1/50</b></td><td>0.1367</td><td>n/a</td><td>120 (0/120)</td><td>1</td><td>0</td><td><b>120</b></td><td>50.2%</td><td>n/a</td><td>n/a</td></tr>
+        <tr><td>soft, none</td><td>0.0527</td><td>50/50</td><td>0.0907</td><td>0.1256</td><td>26 (0/26)</td><td>120</td><td>120</td><td>0</td><td>55.4%</td><td>−0.0401</td><td><b>0.202</b></td></tr>
+        <tr><td>soft, low</td><td>0.0585</td><td>50/50</td><td>0.0690</td><td>0.1011</td><td>52 (0/52)</td><td>119</td><td>120</td><td>0</td><td>60.6%</td><td>−0.0410</td><td><b>0.286</b></td></tr>
+        <tr><td>soft, medium</td><td>0.1377</td><td><b>0/50</b></td><td>n/a</td><td>n/a</td><td>120 (0/120)</td><td>0</td><td>0</td><td><b>120</b></td><td>50.0%</td><td>n/a</td><td>n/a</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 8.</b></figcaption>
+  </figure>
+
+  <p><strong>Note on the &ldquo;n/a&rdquo; cells:</strong> where calibration episodes never settled, <code>summary.json</code> logs <code>NaN</code> for the threshold and the gap. For medium/medium, the normal error comes from the single calibration episode that settled. AUC is P(settled score with body change &gt; settled score without one); 0.5 means no separation, and below 0.5 means <strong>inverted</strong>.</p>
+
+  <figure class="chart">
+    <div class="plate-box"><img src="/assets/compliant-sweep.png" alt="Four panels versus sensor noise (none, low, medium), one line per stiffness (rigid, stiff, medium, soft): false-positive rate, masking rate, rate of body changes missed with no push, and settled-score AUC."></div>
+    <figcaption><b>Figure 1.</b> The unchanged attribution rule across 4 stiffnesses and 3 noise levels, 120 trials per cell per configuration. At medium noise the masking and no-push miss rates on compliant bodies fall only because the rule alarms on every trial, undisturbed runs included (see the false-positive panel). AUC below 0.5 means the settled scores are inverted. Simulated compliant body, not hardware.</figcaption>
+  </figure>
+
+  <h3>The headline numbers</h3>
+  <ol>
+    <li><strong>False positives</strong> (world only → body or alarm), with no sensor noise:
+      <figure>
+        <div class="tw"><table>
+          <thead><tr><th>rigid</th><th>stiff</th><th>medium</th><th>soft</th></tr></thead>
+          <tbody><tr><td>0/120</td><td>3/120</td><td>5/120</td><td>26/120 (21.7%)</td></tr></tbody>
+        </table></div>
+        <figcaption><b>Table 9.</b></figcaption>
+      </figure>
+      With low noise: 0, 1, 18 and <strong>52/120 (43.3%)</strong>. With medium noise: 15/120 on rigid, and 116–120/120 on every compliant body.</li>
+    <li><strong>Masking</strong> (body+world → world), with no noise: rigid 15.8%, stiff 70.0%, medium 97.5%, soft 100.0%.</li>
+    <li><strong>Body changes missed with no push at all</strong>, with no noise: rigid 0/120, stiff 29/120, medium <strong>120/120</strong>, soft <strong>120/120</strong>.</li>
+    <li><strong>The settled-score margin.</strong> It goes from <strong>+0.0014</strong> (rigid, no noise) to <strong>negative in every other configuration where it could be computed.</strong> The stiffest joint with no noise is already at −0.0126.</li>
+    <li><strong>AUC falls below 0.5, meaning the scores invert</strong>, in four configurations: soft/none 0.202, soft/low 0.286, rigid/medium 0.291, medium/low 0.373. There, trials <em>without</em> a body change have <em>higher</em> settled scores than trials with one.</li>
+    <li><strong>Noise breaks it on the rigid body too.</strong> On rigid, body changes missed with no push go 0 → 46 → <strong>120/120</strong>, AUC goes 1.000 → 0.930 → 0.291, and at medium noise 15/120 pushes alarm.</li>
+  </ol>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>config</th><th>1 N·m</th><th>2 N·m</th><th>4 N·m</th></tr></thead>
+      <tbody>
+        <tr><td>soft, none</td><td>0</td><td>10</td><td>16</td></tr>
+        <tr><td>soft, low</td><td>0</td><td>19</td><td>33</td></tr>
+        <tr><td>medium, low</td><td>3</td><td>4</td><td>11</td></tr>
+        <tr><td>rigid, medium</td><td>0</td><td>7</td><td>8</td></tr>
+        <tr><td>stiff, none</td><td>3</td><td>0</td><td>0</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 10.</b> False positives by push magnitude (<code>by_push</code> in <code>summary.json</code>; world-only trials called body or alarm, out of 40 per magnitude).</figcaption>
+  </figure>
+
+  <h3>1. The normal error rises with compliance, so a body change no longer stands out.</h3>
+  <ul>
+    <li>The error while balancing with nothing happening is <strong>0.0107</strong> on rigid. With no noise it is <strong>0.0506</strong> on stiff, <strong>0.0672</strong> on medium and <strong>0.0907</strong> on soft.</li>
+    <li>On rigid, the settled scores <em>with</em> a body change ranged 0.0143–0.0986.</li>
+    <li>So on compliant bodies, normal error alone is the size of a rigid-body change signal. The recalibrated thresholds rise accordingly (0.0568, 0.0919, 0.1256), and body changes fall below them.</li>
+    <li><strong>This does not track held-out prediction error.</strong> The stiff body's model is <em>more</em> accurate than rigid on random data (0.0074 vs 0.0162), yet its error while balancing is about 5× higher.</li>
+    <li><em>Interpretation, not measured:</em> the spring and motor states are hidden from the robot, and closed-loop balancing excites them in a way random-action data does not. No experiment isolated this.</li>
+  </ul>
+
+  <h3>2. Many compliant trials never settle, so the settled score is often not used at all.</h3>
+  <p><code>settled b/nb</code> counts trials that reached a settled verdict, with and without a body change:</p>
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>config</th><th>body present settled (of 240)</th><th>body absent settled (of 240)</th></tr></thead>
+      <tbody>
+        <tr><td>stiff/none</td><td>134</td><td>196</td></tr>
+        <tr><td>stiff/low</td><td>51</td><td>185</td></tr>
+        <tr><td>medium/none</td><td><b>7</b></td><td>185</td></tr>
+        <tr><td>medium/low</td><td><b>13</b></td><td>192</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 11.</b></figcaption>
+  </figure>
+  <p>On medium stiffness, body-change trials almost never settle. They fall through the persistence branch and, below the alarm threshold, end up as world. That is why medium/none misses 120/120 body changes even though its settled-score AUC is 0.955 on the few that did settle.</p>
+
+  <h3>3. At medium noise on compliant bodies, the rule alarms on everything.</h3>
+  <ul>
+    <li>Calibration episodes did not settle (stiff 0/50, medium 1/50, soft 0/50), so no body/world threshold could be set.</li>
+    <li>Every trial then went down the persistence branch.</li>
+    <li>The noisy error level (held-out 0.12–0.15) is far above the frozen alarm threshold of 0.04042, so nearly every trial alarmed. That includes 119–120 of 120 <strong>undisturbed</strong> runs, all via the persistent path (from the trials CSVs).</li>
+    <li>The low masking numbers there (0–3/120) are not detection. The rule has stopped discriminating. Misattribution sits at 50.0–50.2%.</li>
+  </ul>
+
+  <h3>4. Why the scores invert (AUC &lt; 0.5) is not diagnosed.</h3>
+  <ul>
+    <li>The inversion is logged (soft/none, soft/low, rigid/medium, medium/low).</li>
+    <li>No analysis in these files explains why trials without a body change score higher. One possibility is that heavier or longer bodies move more slowly and predictably on a soft joint. That is untested and should not be cited as a finding.</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Discussion</h2>
+  <p>On the rigid pendulum, the rule's most important property holds: in 120 world-only trials it never called a push a body change, so a push alone never triggered adaptation. Its failures go in the conservative direction. When a push and a body change overlap, it sometimes says &ldquo;world&rdquo; and fails to adapt. All 19 of those failures came from one branch of the rule, the decayed path, where the error stays raised but not consistently enough to alarm. That points to a specific, testable fix (how the persistence branch treats raised but intermittent error) rather than to a flaw in the idea.</p>
+  <p>The compliant results are different in kind. Three separate things break, and they compound. The error while balancing normally rises several-fold, so a body change no longer stands out above it. Body-change trials stop settling, so the settled score that does the discriminating is often never computed. And at medium noise the frozen alarm threshold sits below the noise floor, so the rule alarms on everything. None of these is the rule misbehaving on its own terms. Each is a rigid-tuned setting (the calm limits, the settle windows, the alarm threshold) meeting a body it was not tuned for.</p>
+  <p>One observation stands out: the stiff joint's model is more accurate than the rigid one on held-out random data (0.0074 vs 0.0162), yet its error while balancing is about five times higher. Held-out accuracy on random actions is not a reliable proxy for how quiet the self-model is during closed-loop control. We have not isolated the cause. The hidden motor and spring states are the leading candidate, and that is an interpretation, not a measurement.</p>
+  <p>What this report does not test, and what would need to be tested before claiming the rule transfers: recalibrating the calm limits, settle windows and alarm threshold per body; giving the forward model a short history so it can infer hidden actuator state; filtering sensor noise before scoring; and, ultimately, a physical compliant joint. Each is a separate experiment, and none of them has been run.</p>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Limitations</h2>
+
+  <div class="callout strong">
+    <span class="lbl">A negative result</span>
+    <p>The central finding of this report is a failure: the attribution rule, with its rigid-tuned settings, does not transfer to this simulated compliant, noisy body. The limitations below bound how far that failure, and the rigid-body success, can be generalised.</p>
+  </div>
+
+  <div class="limitation"><div class="n">1</div><p><b>Simulated compliance, not hardware.</b> The compliant body is a model: series-elastic + hysteresis + damping + Gaussian noise. The parameters (<code>J_MOTOR</code>, <code>B_MOTOR</code>, <code>B_JOINT</code>, <code>HYST</code>, <code>SPRING_ZETA</code>, <code>N_SUBSTEPS</code>) were chosen, not measured from a real joint. They are logged in <code>results_compliant/versions_and_seed.json</code>.</p></div>
+  <div class="limitation"><div class="n">2</div><p><b>The spring damper was added after a pilot, and the pilot isn't logged.</b> It was added after a balance-only pilot showed the undamped joint could not balance. The stiffness levels were picked so each joint balanced 6/6 in that pilot, before any attribution trial. <b>The pilot's numbers are not saved in any results file.</b> It was an ad-hoc check, and only its design consequence is recorded (the <code>SPRING_ZETA</code> comment in <code>compliant_env.py</code>).</p></div>
+  <div class="limitation"><div class="n">3</div><p><b>Rigid-tuned settings were held fixed.</b> The alarm threshold stayed frozen at 0.04042 (chosen on the rigid dev set). The &ldquo;calm&rdquo; limits (|θ| &lt; 0.3 rad, |θ̇| &lt; 0.5 rad/s) and the settle/persistence windows are the rigid values. Only the body/world threshold was recalibrated per configuration, by the rule's own procedure. Recalibrating the others might change the result; that is untested.</p></div>
+  <div class="limitation"><div class="n">4</div><p><b>One trained model per configuration.</b> Model-to-model variation (training seed) is not measured.</p></div>
+  <div class="limitation"><div class="n">5</div><p><b>Rigid/no-noise uses the original model</b> (<code>forward_model.pt</code>). A retrained rigid model differed slightly in its weights, which I attributed to CPU thread count. That comparison was not logged; the original model was used so the earlier factorial is reproduced exactly.</p></div>
+  <div class="limitation"><div class="n">6</div><p><b>One run per configuration, fixed seed.</b> The confidence intervals in <code>summary.json</code> cover trial-to-trial variation, not reruns.</p></div>
+  <div class="limitation"><div class="n">7</div><p><b>The fallen-pendulum explanation for masking comes from the earlier overlap experiment's traces</b> and is not logged in the factorial results (see Experiment 1).</p></div>
+</section>
+
+<section>
+  <h2><span class="num">7</span>Reproducibility</h2>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>item</th><th>value</th></tr></thead>
+      <tbody>
+        <tr><td>Python</td><td>3.11.15</td></tr>
+        <tr><td>numpy</td><td>2.4.6</td></tr>
+        <tr><td>torch</td><td>2.14.0+cpu</td></tr>
+        <tr><td>gymnasium</td><td>1.3.0</td></tr>
+        <tr><td>master seed</td><td>90000 (all trial seeds derive from it; same draws in every configuration)</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 12.</b> Shared by both experiments (<code>versions_and_seed.json</code> in each results folder).</figcaption>
+  </figure>
+
+  <p><strong>Compliance parameters</strong> (<code>results_compliant/versions_and_seed.json</code>): <code>J_MOTOR</code> 0.05, <code>B_MOTOR</code> 0.5, <code>B_JOINT</code> 0.3, <code>HYST</code> 0.3, <code>SPRING_ZETA</code> 0.3, <code>N_SUBSTEPS</code> 10.</p>
+
+  <figure>
+    <div class="tw wrap-text"><table>
+      <thead><tr><th>file</th><th>role</th></tr></thead>
+      <tbody>
+        <tr><td>run_factorial.py, factorial_config.py</td><td>Experiment 1</td></tr>
+        <tr><td>run_compliant.py, compliant_config.py, compliant_env.py, compliant_trials.py, plot_compliant.py</td><td>Experiment 2</td></tr>
+        <tr><td>alarm_classifier.py, classifier.py</td><td>the rule (unchanged)</td></tr>
+        <tr><td>results_alarm/chosen_alarm.json</td><td>the frozen alarm threshold</td></tr>
+        <tr><td>overlap_trials.py</td><td>episode loop for Experiment 1</td></tr>
+        <tr><td>forward_model.pt</td><td>the rigid model</td></tr>
+        <tr><td>compliant_models/*.pt</td><td>retrained models, one per non-rigid-none configuration</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 13.</b> Code (in <code>surprise_attribution/</code>).</figcaption>
+  </figure>
+
+  <figure>
+    <div class="tw wrap-text"><table>
+      <thead><tr><th>path</th><th>contents</th></tr></thead>
+      <tbody>
+        <tr><td>results_factorial/summary.txt</td><td>Experiment 1 summary</td></tr>
+        <tr><td>results_factorial/trials.csv</td><td>530 rows: per-trial ground truth, verdict, path, settle time, settled score, late-window persistence values, overlap timing</td></tr>
+        <tr><td>results_factorial/versions_and_seed.json</td><td>versions and seed</td></tr>
+        <tr><td>results_compliant/summary.txt, summary.json</td><td>all 12 configurations</td></tr>
+        <tr><td>results_compliant/&lt;config&gt;.json</td><td>per-configuration detail, including by_push and the confusion matrix</td></tr>
+        <tr><td>results_compliant/trials_&lt;config&gt;.csv</td><td>per-trial results, 12 files</td></tr>
+        <tr><td>results_compliant/sweep.png</td><td>false-positive, masking, no-push miss rate and AUC versus noise, per stiffness</td></tr>
+        <tr><td>results_compliant/versions_and_seed.json</td><td>versions, seed and compliance parameters</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 14.</b> Results.</figcaption>
+  </figure>
+
+  <p><strong>Commands:</strong></p>
+  <div class="repro">python run_factorial.py                       <span class="k"># Experiment 1</span><br>
+python run_compliant.py                       <span class="k"># Experiment 2, all configs (resumes from cached per-config JSON)</span><br>
+python run_compliant.py --only soft_low       <span class="k"># one configuration</span><br>
+python run_compliant.py --summary             <span class="k"># rebuild summary + figure from finished configs</span></div>
+</section>
+
+<section>
+  <h2>Conclusion</h2>
+  <p>On the rigid pendulum, the rule never mistook a push for a body change (0/120). But it missed 15.8% of body changes when a push landed at the same time, all through one route: never settled, error flickering below the alarm requirement. The settled scores separated by only +0.0014. On a simulated compliant body that margin disappears. Every compliant or noisy configuration has a negative gap, four configurations invert outright (AUC 0.202–0.373), and false positives climb to 21.7% (soft, no noise) and 43.3% (soft, low noise). On medium and soft joints, every body change is missed even with no push. Sensor noise does the same on the rigid body. At medium noise on compliant bodies the rule alarms on everything, undisturbed runs included. <strong>The rule, with its rigid-tuned settings, is a rigid-body result. In this simulation it does not transfer to a compliant, noisy body.</strong></p>
+</section>
+
+<div class="paper-foot">
+  <span class="series-label">Self Model Research</span>
+  <ol class="series">
+    <li><span class="rung">Rung 1</span><a href="planner-hides-the-model.html">The Planner Hides the Model</a></li>
+    <li><span class="rung">Rung 2</span><a href="wrong-model-worse-than-none.html">A Wrong Model Is Worse Than None</a></li>
+    <li><span class="rung">Rung 3</span><a href="surprise-has-a-signature.html">Surprise Has a Signature</a></li>
+    <li aria-current="page"><span class="rung">Rung 4</span><span class="current">The Margin Was Rigid <em>(this report)</em></span></li>
+  </ol>
+</div>
+</article>
+
+<footer>
+  <section class="band">
+    <canvas class="band-canvas" aria-hidden="true"></canvas>
+    <div class="band-inner">
+
+      <nav class="band-links">
+        <a href="index.html">Home</a>
+        <a href="notes.html">Notes</a>
+        <a href="mailto:viranium.labs@gmail.com">Contact</a>
+      </nav>
+
+      <div class="band-foot">
+        <a class="band-logo" href="index.html"><img src="assets/logo.png" alt="EPI Labs"></a>
+        <div class="band-end">
+          <p class="band-tag">&#12302; Publish the limit, not the promise. &#12303;</p>
+          <p class="copyright">EPI Labs &copy; 2026</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</footer>
+
+</body>
+</html>
