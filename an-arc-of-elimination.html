@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>An Arc of Elimination &mdash; EPI Labs</title>
+<meta name="description" content="Five experiment runs told as one argument: each tested one explanation for why surprise attribution fails on a simulated compliant series-elastic joint, ruled it out or narrowed it, and handed a sharper question to the next. Rung 5 of EPI Labs' self model research.">
+<link rel="stylesheet" href="style.css?v=25">
+<script src="script.js?v=25" defer></script>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="home" href="index.html">Home</a>
+  <a href="notes.html">Research</a>
+  <a href="mailto:viranium.labs@gmail.com">Contact</a>
+</nav>
+
+<article class="paper">
+
+<a class="back" href="notes.html">&larr; Research</a>
+
+<header class="mast">
+  <p class="eyebrow">Technical Report &middot; Self Model Research &middot; Rung 5</p>
+  <h1>An Arc of Elimination: Why Surprise Attribution Fails on a Compliant Body</h1>
+  <p class="subtitle">In simulation only. The compliant body is a simulated series-elastic joint, not hardware.</p>
+  <div class="byline">
+    <span>Pendulum-v1</span><span>Surprise attribution</span><span>October 8, 2026</span><span>Armaan Sharma</span>
+  </div>
+</header>
+
+<div class="abstract">
+  <h2>Abstract</h2>
+  <p>This document tells the story of five experiment runs as one argument. Each run tested one explanation for a failure, ruled it out or narrowed it, and handed a sharper question to the next. Nothing here is a working detector for a compliant body. What the arc does produce is a narrower and better-supported statement of why the detector fails.</p>
+</div>
+
+<div class="callout strong">
+  <span class="lbl">Where the numbers come from</span>
+  <p>Every number below is copied from a results file in <code>surprise_attribution/</code>. A few numbers were computed directly from the per-trial CSVs rather than taken from a summary; those are marked (from the per-trial CSV). Anything not logged is marked as such.</p>
+</div>
+
+<figure>
+  <div class="tw"><table>
+    <thead><tr><th>step</th><th>experiment</th><th>results folder</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Factorial, rigid body, simultaneous disturbances</td><td>results_factorial/</td></tr>
+      <tr><td>2</td><td>The same factorial on a compliant, noisy grid</td><td>results_compliant/</td></tr>
+      <tr><td>3</td><td>Per-body calibration (z-scoring)</td><td>results_calibrated/</td></tr>
+      <tr><td>4a</td><td>History-input forward model</td><td>results_history/</td></tr>
+      <tr><td>4b</td><td>Shape feature, no settle gate</td><td>results_shape/</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>Table 1.</b></figcaption>
+</figure>
+
+<section>
+  <h2><span class="num">1</span>The question</h2>
+  <p>A robot with a learned self-model (a forward model that predicts its own next state) gets surprised whenever a prediction fails. Two very different causes produce that surprise:</p>
+  <ul>
+    <li><strong>A body change:</strong> mass or length changed, permanently. The self-model is now wrong and should adapt.</li>
+    <li><strong>A world event:</strong> something pushed it, briefly. The self-model is still right and should not adapt.</li>
+  </ul>
+  <p>Adapting to a push corrupts a correct model. Failing to adapt to a body change leaves a stale one. So the question is:</p>
+
+  <div class="callout">
+    <span class="lbl">Question</span>
+    <p>Can the self-model's own one-step prediction error tell a body change from a world event, and does that still work on a compliant, noisy body?</p>
+  </div>
+
+  <p><strong>Setup shared by every step:</strong></p>
+  <ul>
+    <li><strong>Body and task.</strong> Gymnasium Pendulum-v1, balancing upright, driven by a CEM model-predictive controller that plans through a learned forward model.</li>
+    <li><strong>Forward model.</strong> An MLP trained on 2,000 random-action transitions. It predicts the next observation [cos θ, sin θ, θ̇] from the current one plus the torque.</li>
+    <li><strong>Surprise.</strong> The one-step prediction error ‖s′ − f(s, a)‖.</li>
+    <li><strong>The original rule</strong> (<code>alarm_classifier.decide</code>). Wait for the pendulum to settle (calm and near upright), then average the error over 2 s.
+      <ul>
+        <li>Above a body/world threshold → body; otherwise → world.</li>
+        <li>If it never settles within 10 s, check whether the error is persistently above an alarm threshold → alarm; otherwise → world.</li>
+      </ul>
+    </li>
+    <li><strong>The trials.</strong> A 2×2 factorial with 120 trials per cell plus 50 undisturbed calibration episodes, all derived from master seed 90000. The four cells are: neither, body change only, push only, body change + push at the same moment.
+      <ul>
+        <li>Body changes: mass ×1.3–1.7 or length ×1.2–1.5.</li>
+        <li>Pushes: 1, 2 or 4 N·m, lasting 0.2 s or 0.5 s.</li>
+      </ul>
+    </li>
+  </ul>
+
+  <p>Two failure rates matter most:</p>
+  <ul>
+    <li><strong>False positive:</strong> a push alone called &ldquo;body&rdquo;. This is the safety-critical error, because the robot rewrites a correct model.</li>
+    <li><strong>Masking:</strong> a body change hidden by a simultaneous push and called &ldquo;world&rdquo;.</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="num">2</span>Experiment 1: rigid body, simultaneous disturbances</h2>
+  <p><strong>Tested:</strong> whether the rule still works when a body change and a push land at the same moment, unannounced, on the rigid pendulum.</p>
+  <p><strong>Found</strong> (<code>results_factorial/summary.txt</code>):</p>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>ground truth</th><th>→ body</th><th>→ world</th><th>→ alarm</th></tr></thead>
+      <tbody>
+        <tr><td>neither</td><td>0</td><td>120</td><td>0</td></tr>
+        <tr><td>body only</td><td>117</td><td>0</td><td>3</td></tr>
+        <tr><td>push only</td><td>0</td><td>120</td><td>0</td></tr>
+        <tr><td>body + push</td><td>70</td><td>19</td><td>31</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 2.</b></figcaption>
+  </figure>
+
+  <ul>
+    <li><strong>False positives:</strong> 0/120 (95% CI 0.0–3.1%). A push alone was never mistaken for a body change.</li>
+    <li><strong>Masking:</strong> 19/120 = 15.8% (95% CI 10.4–23.4%). Overall misattribution was 4.0%.</li>
+    <li><strong>The margin was clean but thin.</strong> Settled scores with a body change: 0.0143–0.0986. Without one: 0.0080–0.0129. Gap +0.0014, against a threshold of 0.0138.</li>
+  </ul>
+
+  <p><strong>Mechanism.</strong> All 19 masked trials took the same route:</p>
+  <ol>
+    <li>The pendulum never settled within 10 s.</li>
+    <li>The error stayed raised, but in fewer than the required 80% of late 1 s blocks.</li>
+    <li>The rule therefore fell through to its default verdict, &ldquo;world&rdquo;.</li>
+  </ol>
+  <p>18 of the 19 were length changes. Masking was concentrated in the 0.5 s pushes at 1 and 2 N·m (8/20 and 10/20).</p>
+
+  <div class="callout">
+    <span class="lbl">Not logged</span>
+    <p>The factorial files don't log the pendulum's angle, so why those trials never settled isn't measured here. An earlier ad-hoc look at <code>results_overlap/</code> traces suggested the pendulum had fallen, but that wasn't saved as a number.</p>
+  </div>
+
+  <p><strong>Question handed on:</strong> the rigid result holds, with a thin margin and a known failure route through &ldquo;never settles&rdquo;. Does it hold on a body that isn't rigid?</p>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Experiment 2: the compliant grid</h2>
+  <p><strong>Tested:</strong> the same trials, rule and seed on a simulated compliant joint, at 4 stiffnesses × 3 sensor-noise levels.</p>
+  <ul>
+    <li><strong>Stiffness:</strong> rigid, then k = 200, 30 and 4 N·m/rad.</li>
+    <li><strong>The joint:</strong> series-elastic, with hysteresis and damping. The motor and spring state are hidden from the robot.</li>
+    <li><strong>Sensor noise:</strong> σ = (0, 0), (0.002, 0.02) and (0.01, 0.1) on angle and angular velocity.</li>
+    <li><strong>Recalibration:</strong> a forward model was retrained on each body, and the body/world threshold was recalibrated on each body's own 50 undisturbed episodes. The alarm threshold stayed frozen at 0.04042.</li>
+  </ul>
+
+  <p><strong>Found</strong> (<code>results_compliant/summary.txt</code>). Rates are out of 120 per cell. The AUC is computed on settled trials only, comparing those with and without a body change.</p>
+
+  <figure>
+    <div class="tw wrap-head"><table>
+      <thead><tr><th>config</th><th>false positive</th><th>masking</th><th>missed, no push</th><th>gap</th><th>AUC</th><th>settled, body / no body</th></tr></thead>
+      <tbody>
+        <tr><td>rigid, none</td><td>0.0%</td><td>15.8%</td><td>0.0%</td><td>+0.0014</td><td>1.000</td><td>187 / 239</td></tr>
+        <tr><td>rigid, low</td><td>0.0%</td><td>55.8%</td><td>38.3%</td><td>−0.0167</td><td>0.930</td><td>193 / 238</td></tr>
+        <tr><td>rigid, medium</td><td>12.5%</td><td>60.0%</td><td>100.0%</td><td>−0.1084</td><td>0.291</td><td>192 / 225</td></tr>
+        <tr><td>stiff, none</td><td>2.5%</td><td>70.0%</td><td>24.2%</td><td>−0.0126</td><td>0.980</td><td>134 / 196</td></tr>
+        <tr><td>stiff, low</td><td>0.8%</td><td>78.3%</td><td>64.2%</td><td>−0.0541</td><td>0.830</td><td>51 / 185</td></tr>
+        <tr><td>stiff, medium</td><td>96.7%</td><td>2.5%</td><td>2.5%</td><td>−0.0241</td><td>0.767</td><td>6 / 5</td></tr>
+        <tr><td>medium, none</td><td>4.2%</td><td>97.5%</td><td>100.0%</td><td>−0.0271</td><td>0.955</td><td>7 / 185</td></tr>
+        <tr><td>medium, low</td><td>15.0%</td><td>100.0%</td><td>100.0%</td><td>−0.0281</td><td>0.373</td><td>13 / 192</td></tr>
+        <tr><td>medium, medium</td><td>100.0%</td><td>0.8%</td><td>0.0%</td><td>n/a</td><td>n/a</td><td>1 / 0</td></tr>
+        <tr><td>soft, none</td><td>21.7%</td><td>100.0%</td><td>100.0%</td><td>−0.0401</td><td>0.202</td><td>172 / 177</td></tr>
+        <tr><td>soft, low</td><td>43.3%</td><td>99.2%</td><td>100.0%</td><td>−0.0410</td><td>0.286</td><td>166 / 180</td></tr>
+        <tr><td>soft, medium</td><td>100.0%</td><td>0.0%</td><td>0.0%</td><td>n/a</td><td>n/a</td><td>0 / 0</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 3.</b></figcaption>
+  </figure>
+
+  <ul>
+    <li>The gap turns negative in every configuration where it can be computed, except rigid with no noise.</li>
+    <li>Four configurations invert outright (AUC below 0.5): trials without a body change score higher than trials with one.</li>
+    <li>On medium and soft joints every body change is missed even with no push.</li>
+    <li>At medium noise on compliant bodies the calibration episodes never settle (stiff 0/50, medium 1/50, soft 0/50, from the per-config JSON). No threshold can be set, and the rule alarms on nearly everything, undisturbed runs included.</li>
+  </ul>
+
+  <p><strong>Lesson: this is not a threshold problem.</strong> The body/world threshold was already recalibrated per body by the rule's own procedure, and it still failed. Where the AUC is below 0.5, no threshold placement could fix it.</p>
+
+  <p><strong>Question handed on:</strong> the compliant body's normal error is higher (normal balancing error 0.0107 rigid vs 0.0907 soft, from <code>findings.md</code>). Is the failure just a matter of scale?</p>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Experiment 3: per-body calibration</h2>
+  <p><strong>Tested:</strong> scoring surprise relative to each body's own healthy baseline instead of in absolute terms. Each step's error was z-scored, (error − baseline mean) / baseline std, using that body's undisturbed calibration episodes. The same rule then ran on the standardised signal, on the same trials.</p>
+  <ul>
+    <li><strong>Thresholds:</strong> carried over from the rigid body in z units (body 0.639, alarm 6.215) and held fixed.</li>
+    <li><strong>Paired comparison:</strong> the regenerated traces reproduced the logged trials exactly, with 0 mismatches in 6,360 trials.</li>
+  </ul>
+
+  <p><strong>Found</strong> (<code>results_calibrated/summary.txt</code>). Counts are out of 120.</p>
+
+  <figure>
+    <div class="tw wrap-head"><table>
+      <thead><tr><th>config</th><th>false positive old → new</th><th>masking old → new</th><th>missed, no push old → new</th><th>AUC old = new</th></tr></thead>
+      <tbody>
+        <tr><td>rigid, low</td><td>0 → 0</td><td>67 → 100</td><td>46 → 51</td><td>0.930</td></tr>
+        <tr><td>rigid, medium</td><td>15 → 0</td><td>72 → 120</td><td>120 → 120</td><td>0.291</td></tr>
+        <tr><td>stiff, none</td><td>3 → 12</td><td>84 → 84</td><td>29 → 28</td><td>0.980</td></tr>
+        <tr><td>medium, low</td><td>18 → 2</td><td>120 → 120</td><td>120 → 120</td><td>0.373</td></tr>
+        <tr><td>soft, none</td><td>26 → 0</td><td>120 → 120</td><td>120 → 120</td><td>0.202</td></tr>
+        <tr><td>soft, low</td><td>52 → 0</td><td>119 → 120</td><td>120 → 120</td><td>0.286</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 4.</b></figcaption>
+  </figure>
+
+  <ul>
+    <li><strong>Every AUC is unchanged, as it must be.</strong> Within one body, z-scoring is a fixed shift and scale, which can't reorder scores. An inverted AUC stays inverted.</li>
+    <li><strong>The false positives that disappear aren't a fix.</strong> In z units, the rigid alarm line (6.2 baseline std) is out of reach on bodies with a wider baseline. Outside rigid/none the alarm branch fired 0 times.</li>
+    <li><strong>The rule now answers &ldquo;world&rdquo; almost everywhere.</strong> Misattribution on medium, soft and medium-noise bodies sits at 49.8–50.6%, the same as always answering &ldquo;world&rdquo;. On stiff/none, false positives went up, from 3 to 12.</li>
+  </ul>
+
+  <p><strong>Lesson: this is not a scale problem.</strong> The scores are in the wrong order, not just on the wrong scale.</p>
+
+  <p><strong>Question handed on:</strong> if the order is wrong, maybe the model lacks information. The compliant joint has hidden spring and motor state that one observation can't reveal. Does giving the model that information put the scores in order?</p>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Experiment 4a: a forward model with history</h2>
+  <p><strong>Tested:</strong> a forward model fed the last k observations and actions (k = 2, 4, 8) instead of one, so it can infer hidden actuator state. Everything else was the same.</p>
+  <ul>
+    <li><strong>Training:</strong> same training data, seed, widths, epochs and learning rate.</li>
+    <li><strong>Controller held fixed:</strong> the original single-state model still drives the pendulum, so trajectories are identical and only the surprise signal changes.</li>
+    <li><strong>Paired comparison:</strong> the re-recorded episodes reproduced the old error traces bit for bit, and the logged verdicts exactly.</li>
+  </ul>
+
+  <p><strong>Found</strong> (<code>results_history/summary.txt</code>). &ldquo;Held-out&rdquo; is one-step error on 1,000 fresh random-action transitions.</p>
+
+  <figure>
+    <div class="tw wrap-head"><table>
+      <thead><tr><th>config</th><th>held-out single → k=4</th><th>AUC single</th><th>k=2</th><th>k=4</th><th>k=8</th><th>missed, no push single → k=4</th></tr></thead>
+      <tbody>
+        <tr><td>rigid, none</td><td>0.0162 → 0.0213</td><td>1.000</td><td>1.000</td><td>0.661</td><td>0.993</td><td>0 → 60</td></tr>
+        <tr><td>rigid, medium</td><td>0.1267 → 0.1102</td><td>0.291</td><td>0.653</td><td>0.777</td><td>0.854</td><td>120 → 108</td></tr>
+        <tr><td>stiff, none</td><td>0.0066 → 0.0072</td><td>0.980</td><td>1.000</td><td>0.896</td><td>0.904</td><td>29 → 30</td></tr>
+        <tr><td>medium, none</td><td>0.0775 → 0.0105</td><td>0.955</td><td>0.998</td><td>0.983</td><td>0.615</td><td>120 → 118</td></tr>
+        <tr><td>medium, low</td><td>0.0817 → 0.0264</td><td>0.373</td><td>1.000</td><td>0.994</td><td>0.998</td><td>120 → 116</td></tr>
+        <tr><td>soft, none</td><td>0.0519 → 0.0118</td><td>0.202</td><td>0.302</td><td>0.047</td><td>0.479</td><td>120 → 120</td></tr>
+        <tr><td>soft, low</td><td>0.0578 → 0.0281</td><td>0.286</td><td>0.506</td><td>0.110</td><td>0.215</td><td>120 → 120</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 5.</b></figcaption>
+  </figure>
+
+  <h3>What history did</h3>
+  <ul>
+    <li><strong>The model got much more accurate on compliant bodies.</strong> Held-out error fell 3–7× on medium and soft joints with no or low noise, and barely moved on rigid and stiff ones. That fits hidden actuator state being real and partly recoverable from a short history.</li>
+    <li><strong>Two of the four inversions were fixed:</strong> medium/low (0.373 → 0.994) and rigid/medium (0.291 → 0.777 at k = 4). The rigid body has no hidden state, so the rigid/medium gain more likely comes from the history window averaging out noise.</li>
+  </ul>
+
+  <h3>What it didn't do</h3>
+  <ul>
+    <li><strong>The soft body stayed inverted at every k.</strong> soft/none was 0.302, 0.047 and 0.479, even though its model became about 4× more accurate.</li>
+    <li><strong>Detection barely moved anywhere.</strong> Body changes missed with no push stayed at 116–120/120 on medium and soft joints.</li>
+  </ul>
+
+  <h3>Why detection didn't improve: two separate walls</h3>
+  <ul>
+    <li><strong>Medium stiffness: the settle gate.</strong> Body-change trials almost never settle (7/240 on medium/none, 13/240 on medium/low), so the settled score, however good, is computed for almost none of them. The rest go to the persistence branch, where error is low while the pendulum is moving, and they fall through to &ldquo;world&rdquo;.</li>
+    <li><strong>Soft body: not the gate.</strong> Its trials do settle (172/240 body-change trials on soft/none). The wall there is inversion. Inside the settled regime, trials without a body change score higher than trials with one: median settled score 0.0901 without a body change vs 0.0837 with one (single-state); 0.1402 vs 0.1291 (k = 4) (from the per-trial CSV).</li>
+  </ul>
+
+  <p><strong>The settled regime is where the model is worst.</strong> Balancing calm and upright is the regime the gate trusts, but on compliant bodies it's where error is highest. For example, on soft/none without a body change, the median settled error is 0.0901 against a median late-window error of 0.0444 in trials that never settled (from the per-trial CSV). The history model raises settled-regime error further on every body, even while it lowers held-out error.</p>
+
+  <p><strong>Lesson: this is not mainly a model-information problem.</strong> Better information fixed the model and two inversions, but not the soft body, and not detection. On medium stiffness the settle mechanism blocks detection. On soft, something in the settled error itself orders the trials the wrong way.</p>
+
+  <p><strong>Question handed on:</strong> what if attribution doesn't wait to settle at all?</p>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Experiment 4b: the shape feature, with no settle gate</h2>
+  <p><strong>Tested:</strong> replacing the settle and persistence rule with the shape of the error after onset. A push should spike and recover; a body change should rise and stay up.</p>
+  <ul>
+    <li><strong>The feature:</strong> in a fixed window of W steps from the onset, r = log(mean error in the second half ÷ mean error in the first half).</li>
+    <li><strong>The decision point:</strong> set only on each body's 50 healthy calibration episodes. &ldquo;Recovered&rdquo; means r is more than 2 standard deviations below its healthy mean, and is called world; anything else is called body.</li>
+    <li><strong>No settle gate:</strong> every trial gets a score.</li>
+    <li><strong>A secondary rule, fixed in advance (&ldquo;+elev&rdquo;),</strong> also requires the late error to be at least 2 standard deviations above its healthy level.</li>
+    <li><strong>Paired comparison:</strong> the same recorded traces, re-scored only; all 6,360 reproduce the logged settled scores.</li>
+  </ul>
+
+  <p><strong>Found</strong> (<code>results_shape/summary.txt</code>, <code>summary.json</code>). Counts: detection is out of 240, false positives out of 120.</p>
+
+  <figure>
+    <div class="tw wrap-head"><table>
+      <thead><tr><th>config</th><th>AUC body-only vs push-only, W=20 / W=40</th><th>median r at W=20: push only / body only / undisturbed</th><th>detected, old → shape+elev (W=20)</th><th>false positives, shape+elev (W=20)</th></tr></thead>
+      <tbody>
+        <tr><td>rigid, none</td><td>1.000 / 1.000</td><td>−2.70 / 0.11 / 0.02</td><td>221 → 127</td><td>0</td></tr>
+        <tr><td>stiff, none</td><td>0.999 / 0.998</td><td>−1.01 / 0.07 / −0.01</td><td>127 → 140</td><td>1</td></tr>
+        <tr><td>medium, none</td><td>0.996 / 1.000</td><td>−0.77 / 0.37 / 0.01</td><td>3 → 167</td><td>16</td></tr>
+        <tr><td>medium, low</td><td>0.985 / 0.996</td><td>−0.64 / 0.15 / 0.03</td><td>0 → 124</td><td>40</td></tr>
+        <tr><td>soft, none</td><td>0.796 / 0.935</td><td>−0.60 / 0.03 / −0.01</td><td>0 → 15</td><td>22</td></tr>
+        <tr><td>soft, low</td><td>0.847 / 0.990</td><td>−0.56 / 0.05 / 0.04</td><td>1 → 43</td><td>50</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 6.</b></figcaption>
+  </figure>
+
+  <h3>What removing the gate fixed</h3>
+  <ul>
+    <li><strong>The shape separates pushes from non-pushes on every body.</strong> Pushes recover clearly, with median r between −0.56 and −2.70. Body-only vs push-only AUC at W = 20 ranges from 0.783 (soft/medium) to 1.000 (rigid/none); on soft it's 0.796 at W = 20 and 0.935 at W = 40.</li>
+    <li><strong>The old rule's inversion on soft (0.202, 0.286) is gone</strong> for this comparison.</li>
+    <li><strong>On medium stiffness, where the gate had blocked everything, detection becomes real.</strong> medium/none goes from 3 to 167 of 240.</li>
+  </ul>
+
+  <h3>What it didn't fix</h3>
+  <p><strong>The shape can't tell &ldquo;stays up&rdquo; from &ldquo;nothing happened&rdquo;.</strong> Undisturbed runs have r ≈ 0, like a body change, so shape alone flags 113–120 of 120 undisturbed runs as body changes. The &ldquo;+elev&rdquo; rule is needed, and it cuts those to 1–10.</p>
+  <p><strong>On the soft body, a body change is almost invisible in the one-step error.</strong> Its median r (0.03, 0.05) is the same as an undisturbed run's (−0.01, 0.04). Its error doesn't rise above normal balancing error either. Once elevation is required, soft detection falls to 15/240 (soft/none) and 43/240 (soft/low) at W = 20, and to 21 and 39 at W = 40.</p>
+  <p><strong>It's worse than the old rule on the rigid body.</strong> Detection drops from 221 to 127, because a simultaneous push's decay dominates the window (masking 19 → 103).</p>
+  <p><strong>Window length matters.</strong> At W = 10, a 0.5 s push is still on during the window's second half, and nearly all of those pushes are called body (54–60 of 60 on most bodies). On soft at W ≥ 20, longer pushes give more false positives than short ones:</p>
+  <ul>
+    <li>soft/none: 24/60 vs 13/60 at W = 20, 20 vs 10 at W = 40;</li>
+    <li>soft/low: 33 vs 25 at W = 20, 12 vs 5 at W = 40.</li>
+  </ul>
+  <p>No slow, gradually fading pushes exist in these trials, so that weak spot is untested.</p>
+
+  <p><strong>Lesson:</strong> the settle gate was a real wall on medium stiffness, and removing it helps there. On the soft body, removing it reveals a lower wall: the body change hardly shows up in the error at all.</p>
+</section>
+
+<section>
+  <h2><span class="num">7</span>The core finding, by elimination</h2>
+  <p>On a simulated soft series-elastic joint, under this controller, the four experiments rule out four explanations for why surprise attribution fails:</p>
+
+  <figure>
+    <div class="tw wrap-text"><table>
+      <thead><tr><th>explanation</th><th>ruled out by</th><th>evidence</th></tr></thead>
+      <tbody>
+        <tr><td>wrong threshold</td><td>Exp 2</td><td>already recalibrated per body; AUC &lt; 0.5, so no threshold works</td></tr>
+        <tr><td>wrong scale</td><td>Exp 3</td><td>z-scoring leaves every AUC unchanged; soft stays at 0.202 and 0.286</td></tr>
+        <tr><td>model lacks memory of hidden state</td><td>Exp 4a</td><td>model 4× more accurate on soft (0.0519 → 0.0118); soft AUC still 0.047–0.479</td></tr>
+        <tr><td>settle mechanism</td><td>Exp 4b</td><td>no gate at all; soft body changes still look like undisturbed runs (median r 0.03 vs −0.01)</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 7.</b></figcaption>
+  </figure>
+
+  <div class="callout strong">
+    <span class="lbl">What remains</span>
+    <p>On the soft body, a mass or length change of the sizes tested barely changes the one-step prediction error during balancing. It doesn't change its level relative to normal balancing error, or its shape over time. <strong>In this simulation, one-step prediction error is the wrong observable for detecting a body change on a compliant body.</strong> It's a good observable for detecting <em>pushes</em> on every body tested, and for detecting body changes on rigid, stiff and (without the settle gate) medium joints.</p>
+  </div>
+
+  <p><strong>How far this claim goes:</strong></p>
+  <ul>
+    <li>It covers one-step error, from models trained on random-action data, during closed-loop balancing, under one controller, in simulation.</li>
+    <li>It doesn't show that the body change is undetectable by <em>any</em> means, or that a real compliant joint behaves this way.</li>
+    <li>Several plausible routes remain untested (section 8). A route that isn't eliminated is still open.</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="num">8</span>Open question: what observable would reveal it?</h2>
+  <p>These are the next hypotheses. None has been tested.</p>
+  <ol>
+    <li><strong>Multi-step (rollout) error.</strong> A changed mass or length may change slow dynamics (period, sag, how the spring settles) more than the next 0.05 s step. Prediction error over a horizon of 0.5–2 s could make a small per-step difference add up.</li>
+    <li><strong>Model-parameter drift.</strong> Instead of reading error, let a copy of the model adapt online and watch <em>how far its parameters have to move</em> to keep fitting. A push needs a brief, reversible move; a body change needs a lasting one.</li>
+    <li><strong>A different residual.</strong> Compare commanded torque or acceleration against what the model expects for the observed motion, rather than the predicted state. On a compliant joint the spring may absorb a body change in the state while the torque needed to hold position still shifts.</li>
+    <li><strong>A baseline matched to the regime.</strong> Train the model, or at least its normal-error baseline, on healthy <em>closed-loop balancing</em> data instead of random actions. Exp 4a showed that balancing is where the random-action model is worst, so a body change may only stand out against a baseline from that regime.</li>
+  </ol>
+
+  <div class="callout">
+    <span class="lbl">A test that would end the arc</span>
+    <p>On the soft body, find an observable whose body-only vs undisturbed AUC is clearly above 0.5 while keeping push-only separable. Exp 4b showed that one-step error fails the first half of that test on soft. The second half already passes.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">9</span>Caveats</h2>
+  <div class="limitation"><div class="n">1</div><p><b>Simulated compliance, not hardware.</b> The joint parameters (<code>J_MOTOR</code> 0.05, <code>B_MOTOR</code> 0.5, <code>B_JOINT</code> 0.3, <code>HYST</code> 0.3, <code>SPRING_ZETA</code> 0.3, <code>N_SUBSTEPS</code> 10) were chosen, not measured from a device. The spring damper was added after a balance-only pilot whose numbers aren't logged.</p></div>
+  <div class="limitation"><div class="n">2</div><p><b>One training seed per model.</b> In Exp 4a the AUC swings between k values (for example rigid/none 1.000 → 0.661 → 0.993). These may be model-to-model noise; with one seed per k it can't be told apart from a real effect of k.</p></div>
+  <div class="limitation"><div class="n">3</div><p><b>Controller held fixed.</b> Every experiment after Exp 2 used the single-state model's controller, so that trajectories stay paired. A different controller would produce different trajectories and settling behaviour. That hasn't been tested.</p></div>
+  <div class="limitation"><div class="n">4</div><p><b>Medium-noise compliant configurations are degenerate.</b> Calibration episodes never settle (stiff 0/50, medium 1/50, soft 0/50), so the settle-based rule has no threshold. The rigid medium-noise body did calibrate (50/50).</p></div>
+  <div class="limitation"><div class="n">5</div><p><b>Rigid-tuned settings.</b> The calm limits, settle windows and alarm threshold were tuned on the rigid body and never re-tuned. Exp 3 changed the threshold units; Exp 4b removed the gate.</p></div>
+  <div class="limitation"><div class="n">6</div><p><b>One run per configuration, fixed seed.</b> The confidence intervals cover trial-to-trial variation, not reruns.</p></div>
+  <div class="limitation"><div class="n">7</div><p><b>Test conditions are narrow.</b> Body changes were mass ×1.3–1.7 and length ×1.2–1.5. Pushes were square pulses of 0.2 s or 0.5 s; no slow, fading pushes were tested.</p></div>
+  <div class="limitation"><div class="n">8</div><p><b>Some mechanism statements are interpretations.</b> These include: hidden actuator state explains the held-out gain; the rigid/medium gain comes from averaging noise; the history model partly adapts to the body change from its input. Each is labelled as an interpretation where it appears.</p></div>
+</section>
+
+<section>
+  <h2><span class="num">10</span>Reproducibility</h2>
+  <p><strong>Shared by all experiments:</strong></p>
+  <ul>
+    <li><strong>Versions:</strong> Python 3.11.15, numpy 2.4.6, torch 2.14.0+cpu, gymnasium 1.3.0, logged in each folder's <code>versions_and_seed.json</code>.</li>
+    <li><strong>Seeds:</strong> master seed 90000; forward-model training seed 0.</li>
+    <li><strong>Paired trials:</strong> every experiment after Exp 1 re-scores or reproduces the same 530 trials per configuration. Each run checked itself against the logged results with 0 mismatches.</li>
+  </ul>
+
+  <figure>
+    <div class="tw wrap-text"><table>
+      <thead><tr><th>experiment</th><th>code (in surprise_attribution/)</th><th>results</th></tr></thead>
+      <tbody>
+        <tr><td>1 Factorial, rigid</td><td>run_factorial.py, factorial_config.py</td><td>results_factorial/ (summary.txt, trials.csv)</td></tr>
+        <tr><td>2 Compliant grid</td><td>run_compliant.py, compliant_config.py, compliant_env.py, compliant_trials.py</td><td>results_compliant/ (summary.txt/json, trials_&lt;config&gt;.csv, sweep.png); models in compliant_models/</td></tr>
+        <tr><td>3 Calibration</td><td>run_calibrated.py, calibrated_config.py</td><td>results_calibrated/ (summary.txt/json, trials_&lt;config&gt;.csv, sweep_calibrated.png)</td></tr>
+        <tr><td>4a History</td><td>run_history.py, history_config.py, history_model.py</td><td>results_history/ (summary.txt/json, trials_&lt;config&gt;.csv, sweep_history.png); models in history_models/</td></tr>
+        <tr><td>4b Shape</td><td>run_shape.py, shape_config.py</td><td>results_shape/ (summary.txt/json, trials_&lt;config&gt;.csv, sweep_shape.png)</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 8.</b></figcaption>
+  </figure>
+
+  <p><strong>The rule under test:</strong> <code>alarm_classifier.py</code> and <code>classifier.py</code>, unchanged throughout. The frozen alarm threshold is in <code>results_alarm/chosen_alarm.json</code>.</p>
+
+  <p><strong>Not committed (regenerable):</strong></p>
+  <ul>
+    <li><code>results_calibrated/traces/</code> and <code>results_history/episodes/</code> are per-step traces, excluded from git because of their size.</li>
+    <li><code>run_calibrated.py</code> and <code>run_history.py</code> recreate them exactly.</li>
+    <li>Exp 4b reads <code>results_history/episodes/</code>, so run 4a first.</li>
+  </ul>
+</section>
+
+<div class="paper-foot">
+  <span class="series-label">Self Model Research</span>
+  <ol class="series">
+    <li><span class="rung">Rung 1</span><a href="planner-hides-the-model.html">The Planner Hides the Model</a></li>
+    <li><span class="rung">Rung 2</span><a href="wrong-model-worse-than-none.html">A Wrong Model Is Worse Than None</a></li>
+    <li><span class="rung">Rung 3</span><a href="surprise-has-a-signature.html">Surprise Has a Signature</a></li>
+    <li><span class="rung">Rung 4</span><a href="the-margin-was-rigid.html">The Margin Was Rigid</a></li>
+    <li aria-current="page"><span class="rung">Rung 5</span><span class="current">An Arc of Elimination <em>(this report)</em></span></li>
+  </ol>
+</div>
+</article>
+
+<footer>
+  <section class="band">
+    <canvas class="band-canvas" aria-hidden="true"></canvas>
+    <div class="band-inner">
+
+      <nav class="band-links">
+        <a href="index.html">Home</a>
+        <a href="notes.html">Notes</a>
+        <a href="mailto:viranium.labs@gmail.com">Contact</a>
+      </nav>
+
+      <div class="band-foot">
+        <a class="band-logo" href="index.html"><img src="assets/logo.png" alt="EPI Labs"></a>
+        <div class="band-end">
+          <p class="band-tag">&#12302; Publish the limit, not the promise. &#12303;</p>
+          <p class="copyright">EPI Labs &copy; 2026</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</footer>
+
+</body>
+</html>
