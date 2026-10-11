@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Quiet Body &mdash; EPI Labs</title>
+<meta name="description" content="Prediction error failed on a simulated compliant joint, and eliminating the explanations one by one found why: a body change makes the robot quieter, not more surprised. A pre-registered test on fresh trials confirmed it. Rung 6 of EPI Labs' self model research.">
+<link rel="stylesheet" href="style.css?v=25">
+<script src="script.js?v=25" defer></script>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="home" href="index.html">Home</a>
+  <a href="notes.html">Research</a>
+  <a href="mailto:viranium.labs@gmail.com">Contact</a>
+</nav>
+
+<article class="paper">
+
+<a class="back" href="notes.html">&larr; Research</a>
+
+<header class="mast">
+  <p class="eyebrow">Technical Report &middot; Self Model Research &middot; Rung 6</p>
+  <h1>The Quiet Body: How a Soft Robot Joint Reveals a Body Change</h1>
+  <p class="subtitle">Prediction error failed on a simulated compliant joint, and eliminating the explanations one by one found why: a body change makes the robot quieter, not more surprised. A pre-registered test on fresh trials confirmed it.</p>
+  <div class="byline">
+    <span>Pendulum-v1</span><span>Surprise attribution</span><span>October 2026</span><span>Armaan Sharma</span>
+  </div>
+</header>
+
+<div class="abstract">
+  <h2>Abstract</h2>
+  <p>A robot's self-model, a learned forward model of its own dynamics, is surprised whenever a prediction fails. The surprise might mean its body changed (adapt) or that the world pushed it (don't). On a rigid simulated pendulum, a rule built on one-step prediction error makes that call well: it never mistook a push for a body change (0/120). On a simulated soft series-elastic joint, the same approach failed, with scores inverted (AUC 0.202 and 0.286). We then ruled out explanations one at a time:</p>
+  <ul>
+    <li>per-body thresholds and per-body rescaling;</li>
+    <li>a model with memory of hidden actuator state;</li>
+    <li>removing the settle gate;</li>
+    <li>longer prediction horizons;</li>
+    <li>a model trained on the balancing regime.</li>
+  </ul>
+  <p>The mechanism turned out to be the reverse of the assumption behind every score: on the soft joint, a body change makes the pendulum move about three times less while balancing. Prediction error tracks motion, so after a body change the self-model looks less surprised. A score that reads the change in behaviour directly (&ldquo;quieter than its healthy self = body change&rdquo;) was then tested in a pre-registered experiment on fresh trials. On both soft configurations it separated body changes from pushes (AUC 0.984 and 0.969) with 3 and 0 false positives in 120 pushes. The detector is the robot's behaviour, not its self-model's surprise. Everything here is simulation, not hardware.</p>
+</div>
+
+<div class="callout strong">
+  <span class="lbl">Status of this result</span>
+  <p>The headline result comes from a single pre-registered test on fresh trials (seed 777000), with the rules and success criteria committed before those trials existed. Everything before it is exploratory: those trials were analysed many ways, so it supports only the mechanism, not the claim. The detector catches 87 of 120 body changes on the soft joint without noise but only 24 of 120 with low sensor noise. It misses most body changes when a push happens at the same moment, and the direction it relies on (&ldquo;quieter&rdquo;) is specific to this soft joint.</p>
+</div>
+
+<section>
+  <h2><span class="num">1</span>Motivation</h2>
+  <p>Online adaptation needs a gate in front of it. Before a self-model rewrites itself, it has to decide whether the surprise was about itself or about the world. Earlier reports in this series showed that, on a rigid pendulum, the time course of one-step prediction error makes that call well.</p>
+  <p>Real robots aren't rigid. Their actuators have springs, lag, friction and noisy sensors. This report asks whether the same idea survives a compliant joint, and when it doesn't, why not. The answer changed what we think the right signal is.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>Setup</h2>
+  <ul>
+    <li><strong>System.</strong> Gymnasium Pendulum-v1, balancing upright under a cross-entropy-method model-predictive controller that plans through a learned forward model (an MLP trained on 2,000 random-action transitions).</li>
+    <li><strong>Surprise.</strong> The one-step prediction error ‖s′ − f(s, a)‖.</li>
+    <li><strong>Compliant joint (simulated).</strong> The motor drives the link through a spring of stiffness k, with hysteresis, a parallel damper and joint damping. The motor and spring state are hidden from the robot. Optional Gaussian sensor noise is added. Stiffness levels: rigid, k = 200, 30 and 4 N·m/rad (&ldquo;soft&rdquo;).</li>
+    <li><strong>Trials.</strong> A 2×2 factorial per body: nothing / body change only / push only / body change and push together, 120 trials each, plus 50 undisturbed calibration episodes.
+      <ul>
+        <li>Body change: mass ×1.3–1.7 or length ×1.2–1.5.</li>
+        <li>Push: 1, 2 or 4 N·m for 0.2 s or 0.5 s.</li>
+      </ul>
+    </li>
+    <li><strong>Decision points.</strong> Every threshold is set on the body's own healthy calibration episodes, never on test trials.</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="num">3</span>The arc of elimination</h2>
+  <p>Table 1 summarises the experiments on the original trials (master seed 90000). Each tested one explanation for why attribution failed on the soft joint.</p>
+
+  <figure>
+    <div class="tw wrap-text"><table>
+      <thead><tr><th>experiment</th><th>explanation tested</th><th>result on the soft joint</th></tr></thead>
+      <tbody>
+        <tr><td>Compliant grid</td><td>does the rigid rule transfer?</td><td>No. AUC 0.202 (no noise) and 0.286 (low noise), inverted</td></tr>
+        <tr><td>Per-body calibration</td><td>wrong scale</td><td>AUC unchanged; z-scoring can't reorder scores</td></tr>
+        <tr><td>History-input model</td><td>model lacks hidden-state memory</td><td>model 4× more accurate (held-out error 0.0519 → 0.0118), yet AUC 0.047–0.479</td></tr>
+        <tr><td>Shape feature, no settle gate</td><td>the settle gate</td><td>pushes now separate, but body changes look like undisturbed runs (median log-ratio 0.03 vs −0.01)</td></tr>
+        <tr><td>Rollout error</td><td>one-step horizon too short</td><td>never usefully above 0.5 before the rollout diverges</td></tr>
+        <tr><td>Regime-matched model</td><td>model trained on the wrong regime</td><td>error floor drops below the motion (0.0900 → 0.0278), but AUC stays inverted (0.236)</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 1.</b> What each experiment tested, and what it showed. AUC compares body-change trials with trials that have no body change; below 0.5 means the scores are inverted.</figcaption>
+  </figure>
+
+  <p>The regime diagnostic explains the middle of the arc. With real motion, the soft model beats a trivial &ldquo;nothing changes&rdquo; predictor (ratio 0.29). During balancing it loses (ratio 1.61), because its error floor (about 0.08–0.10) is larger than the motion itself.</p>
+</section>
+
+<section>
+  <h2><span class="num">4</span>The mechanism: the body change makes the robot quieter</h2>
+  <p>The regime-matched model removed the resolution problem, yet the scores stayed inverted. So we measured the motion directly, in the window 1–5 s after the disturbance.</p>
+
+  <figure>
+    <div class="tw"><table>
+      <thead><tr><th>trial type</th><th>median motion</th></tr></thead>
+      <tbody>
+        <tr><td>undisturbed</td><td>0.0501</td></tr>
+        <tr><td>body change</td><td>0.0150</td></tr>
+        <tr><td>body change (mass only)</td><td>0.0158</td></tr>
+        <tr><td>body change (length only)</td><td>0.0109</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 2.</b> Median step-to-step motion of the pendulum, 1–5 s after onset (soft joint, no noise, seed 90000).</figcaption>
+  </figure>
+
+  <p>A heavier or longer link on the soft spring cuts the pendulum's movement to about a third. Across trials, prediction error tracks that motion (correlation 0.68–0.72). So after a body change the self-model's error goes down, and every score that read &ldquo;more error = body change&rdquo; read the soft joint backwards.</p>
+  <p>Why a heavier link on a soft spring moves less hasn't been isolated. Slower natural dynamics, or the controller fighting the spring less, are plausible, but neither has been tested.</p>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Pre-registered test on fresh trials</h2>
+
+  <h3>The rules, fixed before the data existed</h3>
+  <p>Before generating any new trial, we committed:</p>
+  <ul>
+    <li><strong>Seed:</strong> master seed 777000, never used before.</li>
+    <li><strong>Configurations:</strong> soft joint without and with low sensor noise as the targets; rigid and medium stiffness as controls.</li>
+    <li><strong>Window:</strong> 1–5 s after onset.</li>
+    <li><strong>Score:</strong> each trial's log mean motion as a z-score against the body's own 50 fresh healthy episodes.</li>
+    <li><strong>Rules:</strong>
+      <ul>
+        <li>Rule A: body change if |z| ≥ 2.</li>
+        <li>Rule B: body change if z ≤ −2 (&ldquo;quieter&rdquo;).</li>
+        <li>Rule C: rule A on the self-model's error instead of motion.</li>
+      </ul>
+    </li>
+    <li><strong>Success criteria, on both soft configurations:</strong>
+      <ul>
+        <li>S1: rule A AUC against undisturbed ≥ 0.75.</li>
+        <li>S2: rule B AUC against pushes ≥ 0.75, with at most 15 false positives in 120 pushes.</li>
+      </ul>
+    </li>
+  </ul>
+  <p>The fresh trials were scored once.</p>
+
+  <h3>Result: replicated</h3>
+
+  <figure>
+    <div class="tw wrap-head"><table>
+      <thead><tr><th>body</th><th>rule A: AUC vs undisturbed</th><th>rule B: AUC vs undisturbed</th><th>rule B: AUC vs push</th><th>rule B: body changes caught</th><th>rule B: false positives on pushes</th><th>rule B: body changes missed when a push coincides</th><th>rule C (self-model): AUC vs undisturbed / vs push</th></tr></thead>
+      <tbody>
+        <tr><td>soft, no noise</td><td>0.899</td><td>0.959</td><td>0.984</td><td>87</td><td>3</td><td>97</td><td>0.717 / 0.337</td></tr>
+        <tr><td>soft, low noise</td><td>0.831</td><td>0.944</td><td>0.969</td><td>24</td><td>0</td><td>110</td><td>0.449 / 0.346</td></tr>
+        <tr><td>rigid (control)</td><td>0.994</td><td>0.901</td><td>0.915</td><td>108</td><td>3</td><td>88</td><td>1.000 / 1.000</td></tr>
+        <tr><td>medium (control)</td><td>1.000</td><td>0.017</td><td>0.019</td><td>2</td><td>2</td><td>119</td><td>0.984 / 0.873</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 3.</b> Fresh trials, seed 777000. Rule B is &ldquo;quieter than healthy = body change&rdquo;. Counts are out of 120.</figcaption>
+  </figure>
+
+  <p>Both success criteria passed on both soft configurations. Median motion z after onset (undisturbed / body change / push):</p>
+  <ul>
+    <li>soft, no noise: +0.36 / −2.55 / +2.71;</li>
+    <li>soft, low noise: +0.14 / −1.60 / +4.99.</li>
+  </ul>
+  <p>On the medium joint the direction reverses (+13.94 after a body change), so &ldquo;quieter&rdquo; is not a general rule.</p>
+
+  <figure class="chart">
+    <div class="plate-box"><img src="/assets/quiet-body-replication.png" alt="Four panels, one per simulated joint (soft no-noise, soft low-noise, rigid, medium). Each dot is one fresh trial's change in motion versus the healthy baseline, grouped as undisturbed, body change, push, and body change plus push. On the soft joints, body-change trials sit below zero (quieter) and many push trials sit above (louder)."></div>
+    <figcaption><b>Figure 1.</b> Change in motion against each body's healthy baseline, one dot per fresh trial (seed 777000); black bars are medians and dashed lines the pre-registered thresholds z = ±2. On the soft joint, body-change trials sit below zero. Push trials split: about half return to normal, the rest stay louder. On the medium joint, body changes go the other way. Simulated joint, not hardware.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Discussion</h2>
+  <p>The result is narrower than &ldquo;attribution works on soft bodies&rdquo;.</p>
+  <ul>
+    <li><strong>The self-model is not the detector.</strong> Its own error, scored the same way, fails on the soft joint (rule C: 0.717 and 0.449 against undisturbed, 0.337 and 0.346 against pushes). What works is the robot's behaviour compared with its own healthy behaviour.</li>
+    <li>On the rigid and medium joints the self-model's error works well (1.000 and 0.984). So the right signal depends on the body.</li>
+  </ul>
+  <p>Methodologically, the arc matters as much as the endpoint. Every plausible fix aimed at the error signal (thresholds, scaling, memory, horizon, training data) failed for the same underlying reason, and finding that reason led to a signal that worked on data nobody had looked at.</p>
+  <p>The open problems are concrete:</p>
+  <ul>
+    <li>A real system has to learn, for its own body, which way its behaviour shifts after a body change.</li>
+    <li>Body changes that coincide with a push are still mostly missed.</li>
+    <li>Sensor noise cuts detection sharply (87 → 24 of 120).</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="num">7</span>Limitations</h2>
+  <div class="limitation"><div class="n">1</div><p><b>Simulation, not hardware.</b> The compliant joint is a numerical model with chosen, not measured, parameters. Nothing here has run on a physical device.</p></div>
+  <div class="limitation"><div class="n">2</div><p><b>Direction is body-specific.</b> &ldquo;Quieter = body change&rdquo; holds on the soft and rigid joints tested and fails on the medium joint (AUC 0.019). It isn't a general rule.</p></div>
+  <div class="limitation"><div class="n">3</div><p><b>Detection is incomplete.</b> The soft joint with low noise catches 24 of 120 body changes. When a push coincides with the body change, 97–110 of 120 are missed.</p></div>
+  <div class="limitation"><div class="n">4</div><p><b>The self-model isn't the detector on the soft joint.</b> The replicated result is about behaviour; the self-model's surprise fails there.</p></div>
+  <div class="limitation"><div class="n">5</div><p><b>One controller, one model per body.</b> The controller was held fixed throughout. A different controller could change how much a body change alters the motion.</p></div>
+  <div class="limitation"><div class="n">6</div><p><b>Exploratory history.</b> The seed-90000 trials were analysed many ways; only the fresh-trial test supports a claim.</p></div>
+  <div class="limitation"><div class="n">7</div><p><b>Narrow test conditions.</b> Body changes were mass ×1.3–1.7 or length ×1.2–1.5; pushes were square pulses of 0.2 s or 0.5 s. Four configurations were replicated.</p></div>
+  <div class="limitation"><div class="n">8</div><p><b>Mechanism not isolated.</b> Why the soft joint moves less after a body change is an interpretation, not a measurement.</p></div>
+</section>
+
+<section>
+  <h2><span class="num">8</span>Reproducibility</h2>
+  <div class="repro">Python 3.11.15 · numpy 2.4.6 · torch 2.14.0+cpu · gymnasium 1.3.0<br>
+master seeds: 90000 (exploratory arc) · 777000 (pre-registered replication)<br>
+model training seed: 0<br>
+pre-registration: surprise_attribution/PREREG_replication.md (committed before the fresh run)<br>
+replication:      surprise_attribution/run_replication.py → results_replication/<br>
+full arc:         surprise_attribution/findings_arc.md</div>
+</section>
+
+<section>
+  <h2>Conclusion</h2>
+  <p>On a simulated soft robot joint, a body change doesn't make the self-model more surprised. It makes the robot quieter. Finding that took ruling out six other explanations. A score built on it passed a pre-registered test on fresh trials, separating body changes from pushes with almost no false alarms. It is a narrow, honest result: behaviour, not surprise, and simulation, not hardware. It points the next step at learning which way each body's behaviour shifts, and at a real joint.</p>
+</section>
+
+<div class="paper-foot">
+  <span class="series-label">Self Model Research</span>
+  <ol class="series">
+    <li><span class="rung">Rung 1</span><a href="planner-hides-the-model.html">The Planner Hides the Model</a></li>
+    <li><span class="rung">Rung 2</span><a href="wrong-model-worse-than-none.html">A Wrong Model Is Worse Than None</a></li>
+    <li><span class="rung">Rung 3</span><a href="surprise-has-a-signature.html">Surprise Has a Signature</a></li>
+    <li><span class="rung">Rung 4</span><a href="the-margin-was-rigid.html">The Margin Was Rigid</a></li>
+    <li><span class="rung">Rung 5</span><a href="an-arc-of-elimination.html">An Arc of Elimination</a></li>
+    <li aria-current="page"><span class="rung">Rung 6</span><span class="current">The Quiet Body <em>(this report)</em></span></li>
+  </ol>
+</div>
+</article>
+
+<footer>
+  <section class="band">
+    <canvas class="band-canvas" aria-hidden="true"></canvas>
+    <div class="band-inner">
+
+      <nav class="band-links">
+        <a href="index.html">Home</a>
+        <a href="notes.html">Notes</a>
+        <a href="mailto:viranium.labs@gmail.com">Contact</a>
+      </nav>
+
+      <div class="band-foot">
+        <a class="band-logo" href="index.html"><img src="assets/logo.png" alt="EPI Labs"></a>
+        <div class="band-end">
+          <p class="band-tag">&#12302; Publish the limit, not the promise. &#12303;</p>
+          <p class="copyright">EPI Labs &copy; 2026</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</footer>
+
+</body>
+</html>
