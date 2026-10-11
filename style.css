@@ -1,3 +1,4 @@
+@import url('https://cdn.jsdelivr.net/npm/@fontsource/redaction-35@5.3.0/400.css');
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@300;400;500&family=Source+Serif+4:ital,opsz,wght@0,8..60,300..500;1,8..60,400&display=swap');
 
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -102,8 +103,8 @@ body {
   align-self: center;
   margin-top: clamp(10px, 1.4vw, 18px);
   padding: 0 16px;
-  font-family: 'Times New Roman', Times, serif;
-  font-size: clamp(22px, 2.6vw, 36px);
+  font-family: 'Redaction 35', 'Times New Roman', Times, serif;
+  font-size: clamp(25px, 3vw, 42px);
   font-weight: 400;
   line-height: 1.2;
   text-align: center;
@@ -236,10 +237,10 @@ body {
 }
 
 .wordmark h1 {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Redaction 35', 'Times New Roman', Times, serif;
   font-size: clamp(46px, 8vw, 110px);
-  font-weight: 300;
-  letter-spacing: 0.02em;
+  font-weight: 400;
+  letter-spacing: 0;
   line-height: 1.05;
   color: #F1F2ED;
 }
@@ -366,7 +367,11 @@ a.entry {
 a.entry:last-of-type { border-bottom: 1px solid rgba(255,255,255,0.12); }
 a.entry:hover, a.entry:focus-visible { border-color: rgba(255,255,255,0.34); }
 
-a.entry h3 { margin: 0 0 10px; color: #F1F2ED; }
+a.entry h3 {
+  margin: 0 0 10px; color: #F1F2ED;
+  font-family: 'Redaction 35', 'Times New Roman', Times, serif;
+  font-weight: 400;
+}
 
 /* the rule sits on an inline span so it tracks the title's own width and
    follows it across a wrap, rather than running the full column like a divider */
@@ -578,9 +583,9 @@ footer { margin-top: 170px; }
   text-transform: uppercase; color: var(--accent); margin: 0 0 18px;
 }
 .paper h1 {
-  font-family: 'Inter', sans-serif; font-weight: 300;
+  font-family: 'Redaction 35', 'Times New Roman', Times, serif; font-weight: 400;
   font-size: clamp(31px, 4.6vw, 46px); line-height: 1.1;
-  letter-spacing: -.014em; margin: 0 0 14px; color: var(--ink);
+  letter-spacing: 0; margin: 0 0 14px; color: var(--ink);
   text-wrap: balance;
 }
 .paper .subtitle {
