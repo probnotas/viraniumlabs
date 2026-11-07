@@ -90,7 +90,7 @@ body {
 .mark .sigma {
   display: block;
   font-family: 'Times New Roman', Times, serif;
-  font-size: clamp(170px, 24vw, 360px);
+  font-size: clamp(170px, min(24vw, 34svh), 360px);
   font-weight: 400;
   line-height: 1;
   text-align: center;
@@ -101,10 +101,10 @@ body {
   position: relative;
   z-index: 3;
   align-self: center;
-  margin-top: clamp(10px, 1.4vw, 18px);
+  margin-top: clamp(8px, min(1.4vw, 1.6svh), 18px);
   padding: 0 16px;
   font-family: 'Redaction 35', 'Times New Roman', Times, serif;
-  font-size: clamp(25px, 3vw, 42px);
+  font-size: clamp(22px, min(3vw, 4.4svh), 42px);
   font-weight: 400;
   line-height: 1.2;
   text-align: center;
@@ -116,7 +116,7 @@ body {
   position: relative;
   z-index: 3;
   align-self: center;
-  margin-top: clamp(20px, 2.4vw, 30px);
+  margin-top: clamp(14px, min(2.4vw, 2.6svh), 30px);
   font-family: 'Inter', sans-serif;
   font-size: 11px;
   font-weight: 400;
@@ -131,7 +131,7 @@ body {
   position: relative;
   z-index: 3;
   align-self: center;
-  margin-top: clamp(38px, 5vw, 62px);
+  margin-top: clamp(26px, min(5vw, 5svh), 62px);
   padding: 14px 30px;
   font-family: 'Inter', sans-serif;
   font-size: 11px;
@@ -153,7 +153,7 @@ body {
   z-index: 3;
   align-self: center;
   width: min(640px, 78vw);
-  margin-top: clamp(58px, 9vw, 104px);
+  margin-top: clamp(34px, min(9vw, 7.5svh), 104px);
   animation: riseIn 1.4s cubic-bezier(.2,.7,.3,1) 0.7s both;
 }
 
@@ -219,6 +219,9 @@ body {
 .landing .hero {
   height: 100svh;
   min-height: 0;
+  /* the footer line is position:fixed, so reserve its strip here or centred
+     content slides under it on a short window */
+  padding-bottom: 96px;
 }
 
 .rule {
@@ -259,10 +262,23 @@ body {
   .rule-line { animation: none; }
 }
 
+/* a window too short for the full stack, e.g. a laptop with a toolbar-heavy
+   browser: tighten rather than let the hero clip, since it cannot scroll */
+@media (max-height: 620px) {
+  .landing .hero { padding-bottom: 76px; }
+  .mark .sigma { font-size: clamp(104px, min(24vw, 30svh), 360px); }
+  .hero-cta { margin-top: clamp(20px, 4svh, 40px); padding: 11px 24px; }
+  .sponsor { margin-top: clamp(24px, 5svh, 56px); }
+  .sponsor-label { margin-bottom: 16px; }
+  .sponsor-logo { width: clamp(124px, 10vw, 170px); }
+  .rule { padding: 14px 24px 16px; }
+}
+
 @media (max-width: 520px) {
   .tagline { font-size: 10px; letter-spacing: 0.24em; text-indent: 0.24em; }
   .hero-cta { margin-top: 28px; padding: 13px 24px; font-size: 10px; letter-spacing: 0.15em; }
-  .sponsor { margin-top: 48px; width: 84vw; }
+  .landing .hero { padding-bottom: 104px; }
+  .sponsor { margin-top: 40px; width: 84vw; }
   .sponsor-label { gap: 14px; margin-bottom: 18px; font-size: 9px; letter-spacing: 0.2em; }
   .sponsor-label span { text-indent: 0.2em; }
   .rule { padding: 20px 16px 24px; }
