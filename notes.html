@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Research — EPI Labs</title>
-<link rel="stylesheet" href="style.css?v=36">
-<script src="script.js?v=36" defer></script>
+<link rel="stylesheet" href="style.css?v=39">
+<script src="script.js?v=39" defer></script>
 </head>
 <body>
 
@@ -25,6 +25,13 @@
   <p>Working notes from the lab. Each entry corresponds to one rung of the ladder we are climbing, and each rung is a single question that can be answered no.</p>
 
   <p class="lede">EPI Labs is a research lab betting against data. We study how little experience a robot needs to learn a predictive model of its own body &mdash; and how fast it can repair that model when the body wears, slips, or breaks.</p>
+
+  <a class="entry" href="why-prediction-error-falls.html">
+    <div class="meta">Rung 7 &middot; Technical report &middot; November 2026</div>
+    <h3><span>Why Prediction Error Falls When the Body Changes</span></h3>
+    <p>In simulation, on a soft compliant pendulum, a heavier body makes the controller push less and the arm move less, so the self-model looks less surprised. Two experiments decompose the &times;0.30 motion drop. Driven open-loop, with the controller removed, the passive body alone reaches only &times;0.65 for mass &times;1.5. In closed loop over 30 fresh seeds the controller commands &times;0.50 of its healthy torque and the heavier body returns &times;0.61 of its motion per unit torque, and those multiply to &times;0.30. Prediction error falls only to &times;0.91. Roughly half body, half control loop, and which drives which is still open.</p>
+    <span class="entry-go">Read the report</span>
+  </a>
 
   <a class="entry" href="the-quiet-body.html">
     <div class="meta">Rung 6 &middot; Technical report &middot; October 2026</div>

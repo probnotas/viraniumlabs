@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why Prediction Error Falls When the Body Changes &middot; EPI Labs</title>
+<meta name="description" content="In simulation, on a soft compliant pendulum, a heavier body makes the controller push less and the arm move less, so the self-model looks less surprised. A decomposition of the x0.30 motion drop. Rung 7 of EPI Labs' self model research.">
+<link rel="stylesheet" href="style.css?v=39">
+<script src="script.js?v=39" defer></script>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="home" href="index.html">Home</a>
+  <a href="notes.html">Research</a>
+  <a href="mailto:viranium.labs@gmail.com">Contact</a>
+</nav>
+
+<article class="paper">
+
+<a class="back" href="notes.html">&larr; Research</a>
+
+<header class="mast">
+  <p class="eyebrow">Technical Report &middot; Self Model Research &middot; Rung 7</p>
+  <h1>Why Prediction Error Falls When the Body Changes</h1>
+  <p class="subtitle">In simulation, on a soft compliant pendulum, a heavier body makes the controller push less and the arm move less, so the self-model looks less surprised. A decomposition of the &times;0.30 motion drop.</p>
+  <div class="byline">
+    <span>Pendulum-v1</span><span>Compliant body</span><span>November 2026</span><span>Armaan Sharma</span>
+  </div>
+</header>
+
+<div class="abstract">
+  <h2>Abstract</h2>
+  <p>Everything here is in simulation. On a simulated soft series-elastic pendulum, a body change cuts how much the arm moves to about a third, and the self-model's prediction error falls with it rather than rising. Earlier reports measured that inversion; this one asks where the drop comes from.</p>
+  <p>Two new experiments split it. Driven open-loop, with the controller removed, the passive body alone reaches only &times;0.65 for mass &times;1.5, not &times;0.30. In closed loop over 30 fresh seeds the full drop reproduces and decomposes: the controller commands &times;0.50 of its healthy torque, the heavier body returns &times;0.61 of its healthy motion per unit torque, and those multiply to &times;0.30. Prediction error falls only to &times;0.91. So the drop is roughly half body and half controller. Which way the causation runs inside the loop is still open.</p>
+</div>
+
+<div class="callout strong">
+  <span class="lbl">Status of this result</span>
+  <p>Measurements from one simulated body, not a theory. Both new experiments cover mass &times;1.5 only, soft joint, no sensor noise. The coupling check was not pre-registered: its decision rule was written before the run but committed with the results. No AUC was computed in either. The replay experiment that would separate cause from effect inside the loop has not been run.</p>
+</div>
+
+<section>
+  <h2><span class="num">1</span>Background</h2>
+  <p>A self-model is a learned forward model of a robot's own dynamics. The standard way to use one as a fault detector is to watch its prediction error and treat a rise as evidence the body changed: the residual framework of classical fault diagnosis (Isermann, 2006), and the reading behind self-modelling robots (Bongard, Zykov and Lipson, 2006; Kwiatkowski and Lipson, 2019).</p>
+  <p>Rung 6 found that on a simulated soft joint the error moves the wrong way. Error-based detectors scored AUC between 0.05 and 0.34 across model variants, where 0.5 is chance, all inverted: the standard one-step model at 0.202 without sensor noise, 0.286 with low noise.</p>
+  <p>Why the motion falls was interpretation, not measurement: a body change cut median motion from 0.0501 to 0.0150, a ratio of &times;0.30, and error tracks motion at r = 0.68 to 0.72. Prof. Shai Revzen of the UMich BIRDS Lab suggested on 11 November 2026 that this might be pure resonance detuning, a heavier mass shifting the body's natural frequency away from whatever drives it. That is testable, below.</p>
+</section>
+
+<section>
+  <h2><span class="num">2</span>Method</h2>
+  <ul>
+    <li><strong>Body.</strong> Gymnasium Pendulum-v1 (m = 1 kg, l = 1 m, g = 10, dt = 0.05 s, torque &plusmn;2 N&middot;m, speed 8 rad/s), balancing upright through a series-elastic joint: spring k = 4 N&middot;m/rad (&ldquo;soft&rdquo;), &plusmn;30% hysteresis, parallel damper 0.3 of critical, motor inertia 0.05 kg&middot;m&sup2;, motor friction 0.5, joint damping 0.3 /s, 10 substeps per step, sensor noise off. Values chosen, not measured from a device.</li>
+    <li><strong>Self-model.</strong> MLP 4 (cos &theta;, sin &theta;, &theta;&#775;, torque) to 64 to 64 to 3, ReLU, predicting the state change. Trained on 2,000 random-action transitions from the healthy body (seed 0), 1,000 full-batch Adam epochs at lr 1e-3, held-out error 0.0519. It never saw balancing data or a changed body.</li>
+    <li><strong>Controller.</strong> Model-predictive, planning through the self-model by the cross-entropy method: horizon 20, 5 iterations, 100 candidates, 10 elites, cost the predicted squared distance from upright-at-rest, no torque penalty. Not a separately trained policy.</li>
+    <li><strong>Episodes and metrics.</strong> 325 steps (16.25 s) from within &plusmn;0.2 rad and &plusmn;0.2 rad/s of upright, body change at a step drawn from 60 to 80, scored 1 to 5 s after. Over that window: prediction error &Vert;s(t+1) &minus; &scirc;(t+1)&Vert;, motion mean &Vert;s(t+1) &minus; s(t)&Vert;, command mean |torque|.</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Does the passive body alone explain the drop?</h2>
+  <p>The first experiment removes the controller. The same compliant environment is driven open-loop by 2&middot;sin(&omega;t) at 15 frequencies from 0.1 to 10 rad/s, plus a fine grid from 2 to 6 rad/s in steps of 0.05. Each run settles 30 s, then amplitude is measured over 10 s, healthy against mass &times;1.5, with length &times;1.35 as an extra.</p>
+
+  <figure class="chart">
+    <div class="plate-box"><img src="/assets/resonance-ratio.png" alt="Amplitude ratio of the changed body to the healthy body against drive frequency from 0 to 10 radians per second, on a logarithmic vertical axis. The mass times 1.5 curve stays between roughly 0.65 and 0.9 across all frequencies. The length times 1.35 curve dips to about 0.48. A dotted horizontal line marks the main experiment's ratio of 0.30, well below both curves."></div>
+    <figcaption><b>Figure 1.</b> Open-loop amplitude ratio against drive frequency, in simulation, controller removed. Neither body change reaches the &times;0.30 drop seen with the controller in the loop (dotted line).</figcaption>
+  </figure>
+
+  <p>The deepest mass &times;1.5 ratio at any frequency is &times;0.65, and &times;0.67 to &times;0.92 on the fine grid. Length &times;1.35 reaches &times;0.48. The resonance peak does not move down: 3.5 rad/s for both bodies, 3.50 against 3.65 on the fine grid, where pure spring-mass detuning would have predicted &times;0.82. Swinging about the bottom, gravity's restoring torque scales with mass just as inertia does, so mass barely detunes this body.</p>
+  <p>Passive dynamics alone cannot produce &times;0.30 for a mass change. The detuning explanation was tested, and it covers only part of the drop. One caveat: an open-loop drive cannot balance the pendulum upright, so this measures the hanging regime, not the balancing one. An earlier sanity check on a simplified torsional-spring pendulum, not this environment, gave at best about &times;0.45 at k = 4.</p>
+</section>
+
+<section>
+  <h2><span class="num">4</span>The controller coupling check</h2>
+  <p>The second experiment keeps the main experiment's environment, model file, controller and episode loop, over 30 fresh seeds, 640000 to 640029, each run twice: healthy, and mass &times;1.5 at onset. Paired runs are bit-identical beforehand, and the decision rule was fixed before running.</p>
+
+  <figure>
+    <div class="tw wrap-head"><table>
+      <thead><tr><th>metric, window 1&ndash;5 s</th><th>healthy (mean &plusmn; SD)</th><th>mass &times;1.5 (mean &plusmn; SD)</th><th>ratio of means</th><th>paired ratio (95% CI)</th></tr></thead>
+      <tbody>
+        <tr><td>motion</td><td>0.0542 &plusmn; 0.0218</td><td>0.0165 &plusmn; 0.0051</td><td>&times;0.30</td><td>&times;0.32 (0.27&ndash;0.40)</td></tr>
+        <tr><td>controller torque (N&middot;m)</td><td>0.7742 &plusmn; 0.2829</td><td>0.3887 &plusmn; 0.0812</td><td>&times;0.50</td><td>&times;0.53 (0.46&ndash;0.63)</td></tr>
+        <tr><td>prediction error</td><td>0.0922 &plusmn; 0.0074</td><td>0.0839 &plusmn; 0.0017</td><td>&times;0.91</td><td>&times;0.91 (0.89&ndash;0.94)</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 1.</b> Paired healthy and mass &times;1.5 runs, 30 seeds, in simulation, 1 to 5 s after the change. Bootstrap intervals on the paired ratio.</figcaption>
+  </figure>
+
+  <p>The drop reproduces the main experiment: median motion 0.0589 to 0.0172 here against 0.0501 to 0.0150 there. It starts within about 0.5 s, lasts the whole window, and all 30 seeds stay upright. It is not saturation: torque sits at the &plusmn;2 N&middot;m limit on 0.1% of healthy steps and 0% of changed steps. The pre-set rule resolved to outcome A, the controller's output drops on the heavier body.</p>
+
+  <figure class="chart">
+    <div class="plate-box"><img src="/assets/coupling-motion.png" alt="Motion against time from two seconds before to six seconds after the body change, averaged over 30 seeds, with shaded spread. The healthy trace stays near 0.055 throughout. The mass times 1.5 trace is identical before the change, then falls sharply within about half a second and settles near 0.015 for the rest of the scoring window."></div>
+    <figcaption><b>Figure 2.</b> Motion around the body change, in simulation, mean of 30 paired seeds, shaded spread. Traces are identical until onset.</figcaption>
+  </figure>
+
+  <figure class="chart">
+    <div class="plate-box"><img src="/assets/coupling-torque.png" alt="Controller torque magnitude against time over the same window, averaged over 30 seeds. Both traces sit near 0.8 newton metres before the change. After the change the mass times 1.5 trace falls to roughly 0.4 while the healthy trace stays near 0.8."></div>
+    <figcaption><b>Figure 3.</b> Controller torque, same window, in simulation: about half its healthy value on the heavier body.</figcaption>
+  </figure>
+
+  <figure class="chart">
+    <div class="plate-box"><img src="/assets/coupling-prediction-error.png" alt="One-step prediction error against time over the same window, averaged over 30 seeds. Both traces sit near 0.09 and stay close together after the change, with the mass times 1.5 trace slightly lower. The gap is far smaller than the gaps in the motion and torque figures."></div>
+    <figcaption><b>Figure 4.</b> One-step prediction error, in simulation. It falls only to &times;0.91 while motion falls to &times;0.30: the surprise signal barely moves, and moves downward.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2><span class="num">5</span>The mechanism</h2>
+  <p>In plain words: the arm gets heavier, so the same push moves it less. The controller sees smaller wobbles, so it pushes more gently, and the arm moves even less. The self-model's error mostly tracks how much the arm moves, so the error goes down too. A detector that waits for error to go up reads the changed body as fine. Both factors come from the closed-loop experiment, and they multiply.</p>
+
+  <figure>
+    <div class="tw wrap-text"><table>
+      <thead><tr><th>factor</th><th>ratio, changed / healthy</th></tr></thead>
+      <tbody>
+        <tr><td>controller torque commanded</td><td>&times;0.50</td></tr>
+        <tr><td>motion per unit torque, the passive body responding (0.0425 against 0.0701 motion per N&middot;m)</td><td>&times;0.61</td></tr>
+        <tr class="rule-top"><td>product</td><td>&times;0.30</td></tr>
+      </tbody>
+    </table></div>
+    <figcaption><b>Table 2.</b> Decomposition of the motion drop, in simulation, both factors from the same closed-loop experiment. The second factor's paired geometric mean is &times;0.61, per-seed range 0.39 to 0.92.</figcaption>
+  </figure>
+
+  <p>The &times;0.61 factor is the passive body returning less motion per push, agreeing with section 3, where the deepest mass &times;1.5 ratio was &times;0.65 and the fine grid &times;0.67, close to 1/1.5 = 0.67. The &times;0.50 factor is the controller choosing to push less.</p>
+  <p>Which way the causation runs inside the loop is open: the controller reacts to the state it observes, so &ldquo;less torque leads to less motion&rdquo; and the reverse both fit, and probably reinforce each other. The experiment that would separate them, replaying each seed's healthy torque open-loop on the heavier body, has not been run. These are measurements of one simulated body, not a theory.</p>
+</section>
+
+<section>
+  <h2><span class="num">6</span>Implications</h2>
+  <p>If this coupling holds more widely, which would need testing, it is awkward for fault detection built on self-models: the controller is part of the measurement. A controller that compensates for a changed body may hide the change from the signal meant to reveal it, and the better the controller, the quieter the evidence. Rung 3 found a related effect on a rigid body, where a controller holding the pendulum steady applied little torque and so generated little evidence of its damage.</p>
+  <p>For a compliant humanoid or a deployed robot with series-elastic actuation, this may mean a residual threshold tuned on a rigid rig would not transfer, and a detector may need to watch the controller's output alongside the model's error. Both are hypotheses about systems not tested here.</p>
+</section>
+
+<section>
+  <h2><span class="num">7</span>Limitations</h2>
+  <div class="limitation"><div class="n">1</div><p><b>Simulation, not hardware.</b> A numerical model with chosen, not measured, parameters. Nothing has run on a physical device.</p></div>
+  <div class="limitation"><div class="n">2</div><p><b>One body change.</b> Both new experiments cover mass &times;1.5 only, soft body, no sensor noise. The main experiment also had length changes and low noise.</p></div>
+  <div class="limitation"><div class="n">3</div><p><b>Causal direction unresolved.</b> The replay experiment separating &ldquo;less torque causes less motion&rdquo; from the reverse is not yet run.</p></div>
+  <div class="limitation"><div class="n">4</div><p><b>The open-loop check tests a different regime.</b> An open-loop drive cannot balance the pendulum upright, so section 3 measures the hanging regime, not the balancing one.</p></div>
+  <div class="limitation"><div class="n">5</div><p><b>Not pre-registered.</b> The coupling check's decision rule was written before the run, but committed with the results.</p></div>
+  <div class="limitation"><div class="n">6</div><p><b>No detection performance measured.</b> No AUC was computed in either new experiment. Every AUC quoted comes from the earlier seed-90000 and seed-777000 runs.</p></div>
+  <div class="limitation"><div class="n">7</div><p><b>One of everything else.</b> One body topology (a single-joint pendulum), one controller type, one forward-model training seed.</p></div>
+</section>
+
+<section>
+  <h2><span class="num">8</span>Next steps</h2>
+  <ul>
+    <li>Run the replay experiment: apply each seed's healthy torque sequence open-loop to the heavier body, fixing how much of the drop survives without the controller adapting.</li>
+    <li>Repeat the decomposition for length changes and low sensor noise.</li>
+    <li>Vary the controller: a torque penalty or different horizon may split the two factors differently.</li>
+    <li>Test a second body topology. The direction was already body-specific in Rung 6, where medium joints got louder rather than quieter.</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="num">9</span>Reproducibility</h2>
+  <div class="repro">repo: https://github.com/probnotas/self-model-research<br>
+branch: claude/surprise-attribution-experiment-ivcvjp<br>
+<br>
+python experiments/resonance-check-in-env/experiment.py<br>
+python experiments/controller-coupling-check/experiment.py<br>
+<br>
+seeds: 90000 (exploratory arc) &middot; 777000 (pre-registered replication) &middot; 640000&ndash;640029 (coupling check)<br>
+the open-loop check is deterministic, with start states seeds 0&ndash;4<br>
+logs: results.json and episodes.npz in each experiment folder<br>
+pre-registration: surprise_attribution/PREREG_replication.md (commit 29193c5)</div>
+</section>
+
+<section>
+  <h2>References</h2>
+  <ul class="refs">
+    <li>Bongard, J., Zykov, V. &amp; Lipson, H. (2006). Resilient machines through continuous self-modeling. <em>Science</em>, 314(5802).</li>
+    <li>Kwiatkowski, R. &amp; Lipson, H. (2019). Task-agnostic self-modeling machines. <em>Science Robotics</em>, 4(26).</li>
+    <li>Chen, B., Kwiatkowski, R., Vondrick, C. &amp; Lipson, H. (2022). Fully body visual self-modeling of robot morphologies. <em>Science Robotics</em>, 7(68). [VERIFY volume/issue]</li>
+    <li>Isermann, R. (2006). <em>Fault-Diagnosis Systems: An Introduction from Fault Detection to Fault Tolerance.</em> Springer.</li>
+    <li>Bechtle, S., Hammoud, B., Rai, A., Meier, F. &amp; Righetti, L. Leveraging forward model prediction error for learning control. arXiv 2020 / ICRA 2021. [VERIFY authors, year, venue, and the claim that it uses rigid bodies and is not a body-change study]</li>
+    <li>SelfWAM (Pan et al., 2026). Learned self-models integrated with world models. [VERIFY: full title, authors, venue, and what it does. This paper could not be confirmed.]</li>
+    <li>Wang et al. (2026). [VERIFY: full title, authors, venue.]</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Conclusion</h2>
+  <p>On a simulated soft pendulum, with this controller and mass &times;1.5, the motion drop that hides a body change from its self-model is about half passive body, half control loop. The passive-physics explanation was tested directly and accounts for &times;0.61 of the &times;0.30, not all of it. Prediction error moves only to &times;0.91, and downward, which is why a detector waiting for surprise to rise sees nothing.</p>
+</section>
+
+<div class="paper-foot">
+  <span class="series-label">Self Model Research</span>
+  <ol class="series">
+    <li><span class="rung">Rung 1</span><a href="planner-hides-the-model.html">The Planner Hides the Model</a></li>
+    <li><span class="rung">Rung 2</span><a href="wrong-model-worse-than-none.html">A Wrong Model Is Worse Than None</a></li>
+    <li><span class="rung">Rung 3</span><a href="surprise-has-a-signature.html">Surprise Has a Signature</a></li>
+    <li><span class="rung">Rung 4</span><a href="the-margin-was-rigid.html">The Margin Was Rigid</a></li>
+    <li><span class="rung">Rung 5</span><a href="an-arc-of-elimination.html">An Arc of Elimination</a></li>
+    <li><span class="rung">Rung 6</span><a href="the-quiet-body.html">The Quiet Body</a></li>
+    <li aria-current="page"><span class="rung">Rung 7</span><span class="current">Why Prediction Error Falls When the Body Changes <em>(this report)</em></span></li>
+  </ol>
+</div>
+</article>
+
+<footer>
+  <section class="band">
+    <canvas class="band-canvas" aria-hidden="true"></canvas>
+    <div class="band-inner">
+
+      <nav class="band-links">
+        <a href="index.html">Home</a>
+        <a href="notes.html">Research</a>
+        <a href="mailto:viranium.labs@gmail.com">Contact</a>
+      </nav>
+
+      <div class="band-foot">
+        <a class="band-logo" href="index.html"><img src="assets/logo.png" alt="EPI Labs"></a>
+        <div class="band-end">
+          <p class="band-tag">&#12302; Publish the limit, not the promise. &#12303;</p>
+          <p class="copyright">EPI Labs &copy; 2026</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</footer>
+
+</body>
+</html>
